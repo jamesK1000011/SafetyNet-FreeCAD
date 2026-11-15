@@ -36,7 +36,10 @@ def _register():
     hooks.on("setting_changing", settings.changing)
     hooks.on("setting_changed", settings.changed)
     hooks.on("reply_written", _reply_written)
-    hooks.register_tab("Session", panel.make, order=90)
+    try:  # the tab only while SafetyNet is the workbench in front
+        hooks.register_tab("Session", panel.make, order=90, workbench=panel.WORKBENCH)
+    except TypeError:  # an Agent Link before tabs per workbench
+        hooks.register_tab("Session", panel.make, order=90)
     # SafetyNet's Panel command raises Agent Link's Session tab from now on.
     sys.modules[__name__.rpartition(".")[0]]._hosted = True
 

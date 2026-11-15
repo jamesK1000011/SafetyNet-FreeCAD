@@ -260,9 +260,11 @@ class Panel(_Cmd):
     tip = "Show recovered copies, settings changes and macros."
 
     def Activated(self):
-        from . import panel
+        from . import layout, panel
 
-        panel.show()
+        # Slid out over the 3D view (PanelLayout left-slide): opens and
+        # closes it; else shows the panel.
+        layout.toggle_or(panel.show)
 
 
 class Menu:

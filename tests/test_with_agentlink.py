@@ -79,6 +79,8 @@ class WithAgentLink(unittest.TestCase):
         self.assertIsNotNone(hooks.service("checkpoints"))
         self.assertIsNotNone(hooks.service("reopen"))
         self.assertIn("Session", [t["title"] for t in hooks.TABS])
+        if hasattr(hooks, "TAB_WORKBENCHES"):  # only while SafetyNet is the workbench in front
+            self.assertEqual(hooks.TAB_WORKBENCHES.get("Session"), {"SafetyNetWorkbench"})
 
     def test_1_checkpoint_by_undo(self):
         self.box("U a", [10, 10, 10])

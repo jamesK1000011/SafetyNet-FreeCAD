@@ -307,6 +307,7 @@ def widget(runner, hosted=False):
 # ---- SafetyNet's own dock (Agent Link not loaded) ------------------------------------------
 
 DOCK = "SafetyNetDock"
+WORKBENCH = "SafetyNetWorkbench"
 
 
 def _main():
@@ -338,14 +339,25 @@ def _raise_hosted_tab(mw):
 
 def show():
     """The Panel command: Agent Link's Session tab when Agent Link hosts
-    SafetyNet and its panel is open, else SafetyNet's own dock, tabbed with
-    the Combo View beside the model tree."""
+    SafetyNet (put in its bar for now outside SafetyNet's workbench), else
+    SafetyNet's own dock, placed by the panel layout setting (layout.py)
+    for the workbench it was opened in (Tools ▸ SafetyNet reaches it from
+    any)."""
+    import importlib
+
     import safetynet
 
-    QtCore, QtWidgets = _qt()
+    from . import layout
+
+    _, QtWidgets = _qt()
     mw = _main()
-    if getattr(safetynet, "_hosted", False) and _raise_hosted_tab(mw):
-        return "hosted"
+    if getattr(safetynet, "_hosted", False):
+        try:
+            importlib.import_module("agentlink.panel").show(tab="Session")
+            return "hosted"
+        except Exception:  # noqa: BLE001 — an Agent Link before tabs per workbench
+            if _raise_hosted_tab(mw):
+                return "hosted"
     dock = mw.findChild(QtWidgets.QDockWidget, DOCK)
     if dock is None:
         from . import local
@@ -353,11 +365,12 @@ def show():
         dock = QtWidgets.QDockWidget("SafetyNet", mw)
         dock.setObjectName(DOCK)
         dock.setWidget(widget(local.run, hosted=False))
-        mw.addDockWidget(QtCore.Qt.LeftDockWidgetArea, dock)
-        combo = mw.findChild(QtWidgets.QDockWidget, "Combo View")
-        if combo is not None:
-            mw.tabifyDockWidget(combo, dock)
-    dock.show()
-    dock.raise_()
-    dock.widget().fill()
+    content = dock.widget() or getattr(dock, "_content", None)
+    dock._content = content  # kept: in the Combo View or the slide-out it is not the dock's
+    p = layout.placer()
+    p.show(DOCK, dock, layout.active_workbench() or WORKBENCH, "SafetyNet")
+    p.reveal(DOCK)
+    fill = getattr(content, "fill", None)
+    if fill:
+        fill()
     return "dock"
