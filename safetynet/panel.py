@@ -104,6 +104,38 @@ def recovered_rows(documents, per_doc=5):
     return [r for _, r in sorted(rows, key=lambda x: x[0], reverse=True)]
 
 
+def recovered_groups(documents, open_names=(), today=None, per_doc=8):
+    """The Recovered Copies by document, newest first: one group a document
+    with its latest copy, how many it has, and the rest under it.
+    [{"label", "document", "latest": (when, what, data), "count", "rest":
+    [(when, what, data)], "expanded"}]. A document no longer open whose
+    latest copy is older than today starts folded (about fifty rows of a
+    day's scratch autosaves before)."""
+    import datetime
+
+    today = today or datetime.date.today().isoformat()
+    out = []
+    for d in documents or []:
+        copies = sorted(d.get("copies") or [], key=lambda c: str(c.get("time", "")), reverse=True)
+        if not copies:
+            continue
+        data = {"document": d.get("document"), "label": d.get("label")}
+        rows = [(when(c.get("time", "")), f"{d.get('label')}: {c.get('source', '')}", data) for c in copies[:per_doc]]
+        latest = str(copies[0].get("time", ""))
+        is_open = d.get("document") in set(open_names or ())
+        out.append({"label": d.get("label"), "document": d.get("document"), "latest": rows[0], "count": len(copies),
+                    "rest": rows[1:], "time": latest, "expanded": is_open or _day(latest) >= _day(today)})
+    out.sort(key=lambda g: g["time"], reverse=True)
+    return out
+
+
+def _day(text):
+    """The day of a time as SafetyNet writes it (2026-11-15 12:41 or
+    20261115-124100), or of a date: 20261115."""
+    digits = "".join(ch for ch in str(text) if ch.isdigit())
+    return digits[:8]
+
+
 def message(QtWidgets, parent, text, kind="information", title=TITLE):
     """A message box with SafetyNet's title. macOS shows no window title on
     a message box, so there the title is the bold first line and the text
@@ -259,13 +291,39 @@ def widget(runner, hosted=False):
                 top.setExpanded(bool(rows))
 
             ok, rec = self.read("app_recover", {"action": "list"})
-            section("Recovered Copies", recovered_rows(rec.get("documents") if ok else []), "recover")
+            self.recovered(recovered_groups(rec.get("documents") if ok else [], _open_names()))
             ok, ph = self.read("pref_history", {"limit": 10})
             section("Settings Changes", [(when(c.get("time", "")), change_text(c), {"to": c.get("change")})
                                          for c in (ph.get("changes") or [])] if ok else [], "pref")
             ok, ml = self.read("macro_list", {})
             section("Macros", [(m.get("state", ""), m.get("name"), {"name": m.get("name")})
                                for m in (ml.get("macros") or [])] if ok else [], "macro")
+
+        def recovered(self, groups):
+            """Recovered Copies by document: a row a document (its latest
+            copy and the count, which Use Copy acts on as well), its other
+            copies under it; folded when closed and older than today."""
+            top = QtWidgets.QTreeWidgetItem(["Recovered Copies", "", ""])
+            top.setForeground(0, QtGui.QBrush(QtGui.QColor(self.roles["accent"])))
+            muted = QtGui.QBrush(QtGui.QColor(self.roles["muted"]))
+            for g in groups:
+                when_, what, data = g["latest"]
+                n = g["count"]
+                head = QtWidgets.QTreeWidgetItem(["", str(when_), f"{what} ({n} copies)" if n > 1 else str(what)])
+                head.setToolTip(2, f"{g['label']}: {n} saved copies, newest first")
+                head.setData(0, QtCore.Qt.UserRole, json.dumps({"kind": "recover", **data}))
+                for r in g["rest"]:
+                    it = QtWidgets.QTreeWidgetItem(["", str(r[0]), str(r[1])])
+                    it.setToolTip(2, str(r[1]))
+                    it.setData(0, QtCore.Qt.UserRole, json.dumps({"kind": "recover", **r[2]}))
+                    it.setForeground(1, muted)
+                    head.addChild(it)
+                top.addChild(head)
+                head.setExpanded(bool(g["expanded"]) and bool(g["rest"]))
+            self.tree.addTopLevelItem(top)
+            top.setFirstColumnSpanned(True)
+            top.setExpanded(bool(groups))
+            return top
 
         def pick(self, kind):
             it = self.tree.currentItem()
@@ -317,6 +375,16 @@ def widget(runner, hosted=False):
 
 DOCK = "SafetyNetDock"
 WORKBENCH = "SafetyNetWorkbench"
+
+
+def _open_names():
+    """The documents open in FreeCAD now (none without it)."""
+    try:
+        import FreeCAD
+
+        return list(FreeCAD.listDocuments())
+    except Exception:  # noqa: BLE001
+        return []
 
 
 def _main():

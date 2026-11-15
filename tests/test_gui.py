@@ -361,7 +361,7 @@ class SessionWidget(unittest.TestCase):
         for top in tops:
             self.assertIn(("setFirstColumnSpanned", (True,)), top.calls)
         src = open(os.path.join(ROOT, "safetynet", "panel.py"), encoding="utf-8").read()
-        for t in ('section("Recovered Copies"', 'section("Settings Changes"', 'section("Macros"'):
+        for t in ('"Recovered Copies"', 'section("Settings Changes"', 'section("Macros"'):
             self.assertIn(t, src)
         # Long names cut in the middle (no wrapping, which would turn eliding off).
         self.assertIn(("setWordWrap", (False,)), w.tree.calls)
@@ -375,6 +375,45 @@ class SessionWidget(unittest.TestCase):
         rows = panel.recovered_rows(docs)
         self.assertEqual([r[2]["document"] for r in rows], ["B", "A", "A"])
         self.assertEqual(rows[-1][1], "A: checkpoint")
+
+
+class RecoveredByDocument(unittest.TestCase):
+    """About fifty rows of a day's autosaves before: one row a document,
+    newest first, its latest copy and the count, the rest under it;
+    documents closed and older than today folded."""
+
+    def docs(self):
+        def copies(day, n):
+            return [{"time": f"{day} {9 + i:02d}:00", "source": "autosave"} for i in range(n)]
+
+        return [{"document": "Scratch1", "label": "Scratch1", "copies": copies("2026-11-14", 12)},
+                {"document": "Box", "label": "Box", "copies": copies("2026-11-15", 3)},
+                {"document": "Old", "label": "Old", "copies": copies("2026-11-13", 2)},
+                {"document": "Empty", "label": "Empty", "copies": []}]
+
+    def test_one_row_a_document_newest_first(self):
+        from safetynet import panel
+
+        g = panel.recovered_groups(self.docs(), open_names=["Old"], today="2026-11-15")
+        self.assertEqual([x["document"] for x in g], ["Box", "Scratch1", "Old"])
+        box, scratch, old = g
+        self.assertEqual(box["count"], 3)
+        self.assertEqual(box["latest"][1], "Box: autosave")
+        self.assertEqual(len(box["rest"]), 2)
+        self.assertEqual(box["latest"][2], {"document": "Box", "label": "Box"})  # Use Copy acts on the row
+        self.assertTrue(box["expanded"])  # today's
+        self.assertFalse(scratch["expanded"])  # closed, from yesterday: folded
+        self.assertEqual(scratch["count"], 12)
+        self.assertTrue(old["expanded"])  # still open
+
+    def test_in_the_panel(self):
+        from safetynet import panel
+
+        with gui_stubs():
+            w = panel.widget(lambda t, a: (True, {}), hosted=False)
+            top = w.recovered(panel.recovered_groups(self.docs(), today="2026-11-15"))
+        heads = [c[1][0] for c in top.calls if c[0] == "addChild"]
+        self.assertEqual(len(heads), 3)
 
 
 class Tooltips(unittest.TestCase):
