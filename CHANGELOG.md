@@ -23,3 +23,10 @@ The first release, 0.1.0, is being prepared.
 - Release preparation: a beginner's README with a generated tool list,
   complete Addon Manager metadata, licence headers checked for every file,
   how to uninstall, a privacy statement, and this changelog.
+- The SafetyNet panel lists Recovered Copies once per original document,
+  copies of copies included, says where each copy came from (FreeCAD
+  autosave, SafetyNet autosave, checkpoint), and folds closed documents over
+  two hours old under Older. Its buttons work only on the kind of row picked,
+  and SafetyNet's messages have a short bold first line. Opening a recovered
+  copy rebuilds the shapes FreeCAD's autosave left empty and says why the
+  Report view showed errors.

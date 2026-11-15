@@ -238,6 +238,70 @@ class RecoveredNames(unittest.TestCase):
         self.assertNotIn("t", rows[0])
 
 
+class EmptyCachedShapes(unittest.TestCase):
+    """FreeCAD's autosave writes some cached shapes as empty blobs, which
+    reading a copy reports in red: the copy's objects with them rebuilt by a
+    recompute (in memory only), and one plain line saying why."""
+
+    def fcstd(self, folder):
+        import zipfile
+
+        f = os.path.join(folder, "copy.FCStd")
+        with zipfile.ZipFile(f, "w") as z:
+            z.writestr("Document.xml", "<Document/>")
+            z.writestr("Sketch.InternalShape.bin", b"")
+            z.writestr("Pad.SuppressedShape.bin", b"")
+            z.writestr("Pad.Shape.brp", b"shape")
+            z.writestr("Box.Shape.bin", b"xx")
+        return f
+
+    def test_found_from_the_zip_index(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(recovery.empty_shapes(self.fcstd(d)), {"Sketch", "Pad"})
+            self.assertEqual(recovery.empty_shapes(os.path.join(d, "none.FCStd")), set())
+
+    def test_opening_a_copy_rebuilds_them_and_says_so(self):
+        import types
+        from unittest import mock
+
+        printed, log = [], []
+
+        class Obj:
+            def __init__(self, n):
+                self.n = n
+
+            def touch(self):
+                log.append(("touch", self.n))
+
+        class Doc:
+            Name, Label, Meta = "WindowTest_recovered", "", {}
+
+            def getObject(self, n):
+                return Obj(n) if n in ("Sketch", "Pad") else None
+
+            def recompute(self):
+                log.append(("recompute",))
+
+            def save(self):  # never: the copy is not written
+                raise AssertionError("saved")
+
+        opened = []
+        fc = types.SimpleNamespace(openDocument=lambda f: opened.append(f) or Doc(),
+                                   Console=types.SimpleNamespace(PrintMessage=printed.append),
+                                   ParamGet=lambda *_: types.SimpleNamespace(GetInt=lambda n, d=0: 4, GetString=lambda n, d="": d))
+        with tempfile.TemporaryDirectory() as d, mock.patch.dict(sys.modules, {"FreeCAD": fc}):
+            src = self.fcstd(d)
+            with open(src, "rb") as f:
+                before = f.read()
+            nd = recovery.open_copy(src, "WindowTest", "WindowTest", time.time())
+            with open(src, "rb") as f:
+                self.assertEqual(f.read(), before)  # the source untouched
+        self.assertEqual(printed, ["SafetyNet: FreeCAD's autosave left some cached shapes empty; they are rebuilt on recompute.\n"])
+        self.assertEqual(log, [("touch", "Pad"), ("touch", "Sketch"), ("recompute",)])
+        self.assertTrue(recovery.from_copy_folder(opened[0]))
+        self.assertTrue(nd.Label.startswith("WindowTest (recovered "))
+
+
 class SettingsEvents(Home):
     def test_changed_logs_with_the_snapshot_taken_before(self):
         settings._pending.update({"snapshot": "/snap.cfg", "tool": "pref_set", "t": time.time()})

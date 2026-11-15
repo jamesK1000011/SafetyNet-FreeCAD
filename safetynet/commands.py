@@ -33,12 +33,14 @@ def _mw():
         return None
 
 
-def say(text, error=False):
+def say(text, headline, error=False):
+    """The Report view line and a message box: a short bold headline, the
+    sentence under it."""
     (FreeCAD.Console.PrintError if error else FreeCAD.Console.PrintMessage)(f"SafetyNet: {text}\n")
     try:
         from .panel import message
 
-        message(_qt(), _mw(), text, "warning" if error else "information")
+        message(_qt(), _mw(), text, "warning" if error else "information", headline)
     except Exception:
         pass
 
@@ -48,7 +50,7 @@ def call(tool, args=None, quiet=False):
     ok, r = local.run(tool, args or {})
     if not ok:
         if not quiet:
-            say((r.get("error") or {}).get("message", str(r)), error=True)
+            say((r.get("error") or {}).get("message", str(r)), "Couldn't do that", error=True)
         return None
     return r
 
@@ -133,13 +135,13 @@ class Restore(_Cmd):
         rows = [(f"{c['checkpoint']}{' · ' + c['name'] if c.get('name') else ''} · {when(c.get('time', ''))}{' · auto' if c.get('auto') else ''}", c["checkpoint"])
                 for c in reversed(r.get("checkpoints") or [])]
         if not rows:
-            say(f"{r.get('document')} has no checkpoints yet: Checkpoint Now takes one.")
+            say(f"{r.get('document')} has no checkpoints yet. Checkpoint Now takes one.", "No checkpoints yet")
             return
         cp = pick("Restore Checkpoint", f"Back to which checkpoint of {r.get('document')}?", rows)
         if cp:
             out = call("history_restore", {"checkpoint": cp})
             if out:
-                say(f"Back at {cp}." + (f" The state before is {out['before']}." if out.get("before") else ""))
+                say(f"Back at {cp}." + (f" The state before is {out['before']}." if out.get("before") else ""), "Checkpoint restored")
 
 
 class Recover(_Cmd):
@@ -156,7 +158,7 @@ class Recover(_Cmd):
             newest = (d.get("copies") or [{}])[0]
             rows.append((f"{d.get('label')} · {len(d.get('copies') or [])} copies · newest {newest.get('source', '')} {when(newest.get('time', ''))}", d))
         if not rows:
-            say("No saved copies of any document here.")
+            say("No saved copies of any document here.", "No recovered copies")
             return
         d = pick("Recovered Copies", "Open the newest good copy of which document (beside its file)?", rows)
         if not d:
@@ -165,18 +167,21 @@ class Recover(_Cmd):
         rec = (out or {}).get("recovered") or []
         if not rec:
             if out and out.get("failed"):
-                say(f"No copy of {d.get('label')} opened: {out['failed']}", error=True)
+                say(f"No copy of {d.get('label')} opened: {out['failed']}", "Copy not opened", error=True)
             return
         rec = rec[0]
         if not rec.get("file"):
-            say(f"{rec.get('as')} is open; it was never saved to a file — save it where you like.")
+            from .panel import never_saved
+
+            headline, text = never_saved(rec.get("as"))
+            say(text, headline)
             return
         want = f"save over {os.path.basename(rec['file'])}"
         t = typed("Use Recovered Copy", want, f"{rec.get('as')} is open beside your file. To make it the file (the old one is kept):")
         if t:
             done = call("app_recover", {"action": "accept", "document": rec["document"], "confirm": t})
             if done:
-                say(f"Saved over {done['saved']}." + (f" The old file is kept at {done['previousFile']}." if done.get("previousFile") else ""))
+                say(f"Saved over {done['saved']}." + (f" The old file is kept at {done['previousFile']}." if done.get("previousFile") else ""), "Recovered copy saved")
 
 
 def _changes(limit=20):
@@ -206,7 +211,7 @@ class Rollback(_Cmd):
     def Activated(self):
         rows = _changes(20)
         if not rows:
-            say("No settings changes logged to roll back.")
+            say("No settings changes logged to roll back.", "No settings changes")
             return
         ch = pick("Roll Back Setting", "Put the settings back as they were before which change?", [(_change_text(c), c["change"]) for c in rows])
         if ch is None:
@@ -214,12 +219,12 @@ class Rollback(_Cmd):
         from .panel import message
 
         QtWidgets = _qt()
-        sure = message(QtWidgets, _mw(), f"Put all of FreeCAD's settings back as they were before change #{ch}? The settings now are snapshotted first.", "question", "Roll Back Setting")
+        sure = message(QtWidgets, _mw(), f"All of FreeCAD's settings go back to how they were before change #{ch}. The settings now are snapshotted first.", "question", "Roll back settings?")
         if sure != QtWidgets.QMessageBox.Yes:
             return
         out = call("pref_rollback", {"to": ch})
         if out:
-            say(out.get("note") or f"Rolled back to {out.get('rolledBackTo')}.")
+            say(out.get("note") or f"Rolled back to {out.get('rolledBackTo')}.", "Settings rolled back")
 
 
 class Macros(_Cmd):
@@ -232,7 +237,7 @@ class Macros(_Cmd):
             return
         rows = [(f"{m['name']} · {m.get('state', '')}{' · ' + m['about'] if m.get('about') else ''}", m["name"]) for m in r.get("macros") or []]
         if not rows:
-            say(f"No macros in {r.get('folder')}.")
+            say(f"No macros in {r.get('folder')}.", "No macros")
             return
         name = pick("Macros", f"Macros in {r.get('folder')}:", rows)
         if not name:
@@ -249,10 +254,10 @@ class Macros(_Cmd):
                 t = typed("Approve Macro", f"approve {name}", "A macro is Python that runs with the computer's full reach.")
                 if t:
                     if call("macro_approve", {"name": name, "confirm": t}):
-                        say(f"{name} approved: it runs until its file changes.")
+                        say(f"{name} is approved. It runs until its file changes.", "Macro approved")
         elif what == "unapprove":
             if call("macro_unapprove", {"name": name}) is not None:
-                say(f"{name} is off the approved list.")
+                say(f"{name} is off the approved list.", "Approval taken back")
 
 
 class Panel(_Cmd):

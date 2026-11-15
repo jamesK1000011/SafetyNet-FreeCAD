@@ -219,18 +219,64 @@ def forget_recent():
         return 0
 
 
+EMPTY_SHAPES_NOTE = "SafetyNet: FreeCAD's autosave left some cached shapes empty; they are rebuilt on recompute.\n"
+
+
+def empty_shapes(fcstd):
+    """The objects whose cached shapes a saved copy holds as empty blobs
+    (FreeCAD's autosave writes "Sketch.InternalShape.bin" of 0 bytes, which
+    reading reports as an error in red): {"Sketch", "Pad"}. Read from the
+    file's zip index only; nothing is written."""
+    import zipfile
+
+    out = set()
+    try:
+        with zipfile.ZipFile(fcstd) as z:
+            for i in z.infolist():
+                base = i.filename.rsplit("/", 1)[-1]
+                if i.file_size == 0 and base.endswith(".bin") and "." in base[:-4]:
+                    out.add(base.split(".", 1)[0])
+    except (OSError, zipfile.BadZipFile):
+        pass
+    return out
+
+
+def rebuild_empty(nd, names):
+    """The objects with empty cached shapes touched and the copy recomputed,
+    so their shapes are built again (in memory: the copy lives in its
+    temporary folder and nothing is saved). The one plain Report view line
+    that says why FreeCAD reported them. True when it recomputed."""
+    import FreeCAD
+
+    FreeCAD.Console.PrintMessage(EMPTY_SHAPES_NOTE)
+    touched = False
+    for n in sorted(names):
+        o = nd.getObject(n) if hasattr(nd, "getObject") else None
+        if o is not None:
+            try:
+                o.touch()
+                touched = True
+            except Exception:  # noqa: BLE001
+                pass
+    return touched
+
+
 def open_copy(src, name, label, t):
     """A saved copy opened beside the person's file, never over it: named
     after the original document once, "<name>_recovered" and the label
     "<label> (recovered HH:MM)", however often it was recovered before;
-    kept off Open Recent."""
+    kept off Open Recent. Cached shapes FreeCAD's autosave left empty are
+    rebuilt by its recompute, with one line saying so."""
     import FreeCAD
 
     name, label = original_name(name), original_label(label)
     tmpd = tempfile.mkdtemp(prefix=TMP_PREFIX)
     tmp = os.path.join(tmpd, f"{safe(name)}_recovered.FCStd")
     shutil.copy2(src, tmp)
+    empty = empty_shapes(tmp)
     nd = FreeCAD.openDocument(tmp)
+    if empty:
+        rebuild_empty(nd, empty)
     try:
         nd.recompute()
     except Exception:

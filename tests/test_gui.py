@@ -325,7 +325,8 @@ class SessionWidget(unittest.TestCase):
             self.assertIn(("setVisible", (False,)), row.calls)
         self.assertNotIn("doc_switch", asked)
         self.assertEqual(asked, ["app_recover", "pref_history", "macro_list"])
-        self.assertIn(("setEnabled", (False,)), w.buttons["Run"].calls)
+        self.assertIn(("setEnabled", (False,)), w.buttons["Run Macro"].calls)
+        self.assertEqual(w.enable_for("macro"), {"Approve Macro"})  # Run needs Agent Link
 
     def test_hosted_shows_them(self):
         w, asked = self.build(True)
@@ -378,42 +379,93 @@ class SessionWidget(unittest.TestCase):
 
 
 class RecoveredByDocument(unittest.TestCase):
-    """About fifty rows of a day's autosaves before: one row a document,
-    newest first, its latest copy and the count, the rest under it;
-    documents closed and older than today folded."""
+    """About forty rows of a day's autosaves on the Mac, copies of copies
+    ("OpTest_recovered1") apart from their document: one row a original
+    document with its count, newest first; closed ones over two hours old
+    folded under Older; the source said in words."""
+
+    def setUp(self):
+        import datetime
+
+        self.now = datetime.datetime(2026, 11, 15, 19, 0)
 
     def docs(self):
-        def copies(day, n):
-            return [{"time": f"{day} {9 + i:02d}:00", "source": "autosave"} for i in range(n)]
+        def copies(day, hours, source="autosave"):
+            return [{"time": f"{day} {h:02d}:00", "source": source} for h in hours]
 
-        return [{"document": "Scratch1", "label": "Scratch1", "copies": copies("2026-11-14", 12)},
-                {"document": "Box", "label": "Box", "copies": copies("2026-11-15", 3)},
-                {"document": "Old", "label": "Old", "copies": copies("2026-11-13", 2)},
+        return [{"document": "WindowTest", "label": "WindowTest", "copies": copies("2026-11-15", (18, 17), "freecad")},
+                {"document": "WindowTest_recovered", "label": "WindowTest (recovered 18:48)", "copies": copies("2026-11-15", (16, 15))},
+                {"document": "WindowTest_recovered1", "label": "WindowTest_recovered (recovered 17:02) (recovered 18:48)",
+                 "copies": copies("2026-11-15", (14, 13), "checkpoint")},
+                {"document": "OpTest_recovered_recovered1", "label": "OpTest_recovered1", "copies": copies("2026-11-15", (10,))},
+                {"document": "OpTest", "label": "OpTest", "copies": copies("2026-11-15", (9, 8))},
+                {"document": "Box", "label": "Box", "copies": copies("2026-11-14", (9,))},
                 {"document": "Empty", "label": "Empty", "copies": []}]
 
-    def test_one_row_a_document_newest_first(self):
+    def test_one_row_an_original_document_newest_first(self):
         from safetynet import panel
 
-        g = panel.recovered_groups(self.docs(), open_names=["Old"], today="2026-11-15")
-        self.assertEqual([x["document"] for x in g], ["Box", "Scratch1", "Old"])
-        box, scratch, old = g
-        self.assertEqual(box["count"], 3)
-        self.assertEqual(box["latest"][1], "Box: autosave")
-        self.assertEqual(len(box["rest"]), 2)
-        self.assertEqual(box["latest"][2], {"document": "Box", "label": "Box"})  # Use Copy acts on the row
-        self.assertTrue(box["expanded"])  # today's
-        self.assertFalse(scratch["expanded"])  # closed, from yesterday: folded
-        self.assertEqual(scratch["count"], 12)
-        self.assertTrue(old["expanded"])  # still open
+        g = panel.recovered_groups(self.docs(), open_names=["Box"], now=self.now)
+        self.assertEqual([x["label"] for x in g], ["WindowTest", "OpTest", "Box"])
+        win, op, box = g
+        self.assertEqual(win["count"], 6)
+        self.assertEqual(win["latest"][1], "FreeCAD autosave")
+        self.assertEqual(win["latest"][2], {"document": "WindowTest", "label": "WindowTest"})  # Use Copy acts on the row
+        self.assertEqual([r[1] for r in win["rest"]], ["FreeCAD autosave", "SafetyNet autosave", "SafetyNet autosave", "checkpoint", "checkpoint"])
+        self.assertEqual(panel.group_text(win), "WindowTest — FreeCAD autosave (6 copies)")
+        self.assertEqual(op["count"], 3)
+        self.assertFalse(win["older"])  # an hour old
+        self.assertTrue(op["older"])  # closed, nine hours old
+        self.assertFalse(box["older"])  # still open
+        self.assertTrue(box["expanded"])
+        self.assertFalse(win["expanded"])  # closed: folded, its count says the rest
+        self.assertEqual(panel.group_text(box), "Box — SafetyNet autosave")
 
     def test_in_the_panel(self):
         from safetynet import panel
 
         with gui_stubs():
             w = panel.widget(lambda t, a: (True, {}), hosted=False)
-            top = w.recovered(panel.recovered_groups(self.docs(), today="2026-11-15"))
-        heads = [c[1][0] for c in top.calls if c[0] == "addChild"]
-        self.assertEqual(len(heads), 3)
+            top = w.recovered(panel.recovered_groups(self.docs(), now=self.now))
+        rows = [c[1][0] for c in top.calls if c[0] == "addChild"]
+        self.assertEqual(len(rows), 2)  # WindowTest, and Older last
+        fold = rows[-1]
+        self.assertEqual(len([c for c in fold.calls if c[0] == "addChild"]), 2)  # OpTest, Box
+        self.assertIn(("setExpanded", (False,)), fold.calls)
+
+
+class Buttons(unittest.TestCase):
+    """Each button acts on one kind of row and is enabled only on it."""
+
+    def test_by_kind(self):
+        from safetynet import panel
+
+        self.assertEqual(panel.buttons_for("recover", True), {"Use Copy"})
+        self.assertEqual(panel.buttons_for("pref", True), {"Roll Back"})
+        self.assertEqual(panel.buttons_for("macro", True), {"Approve Macro", "Run Macro"})
+        self.assertEqual(panel.buttons_for("macro", False), {"Approve Macro"})
+        self.assertEqual(panel.buttons_for(None, True), set())
+
+    def test_in_the_panel(self):
+        from safetynet import panel
+
+        with gui_stubs():
+            w = panel.widget(lambda t, a: (True, {}), hosted=True)
+            for b in w.buttons.values():
+                self.assertIn(("setEnabled", (False,)), b.calls)  # nothing picked yet
+            self.assertIn("itemSelectionChanged.connect", [c[0] for c in w.tree.calls])
+            w.enable_for("pref")
+            for label, b in w.buttons.items():
+                self.assertEqual(b.calls[-1], ("setEnabled", (label == "Roll Back",)))
+
+    def test_macro_buttons_say_macro(self):
+        from safetynet import panel
+
+        labels = [b[0] for b in panel.BUTTONS]
+        self.assertEqual(labels, ["Use Copy", "Roll Back", "Approve Macro", "Run Macro"])
+        for _, _, tip in panel.BUTTONS:  # one short sentence each
+            self.assertLessEqual(len(tip), 70, tip)
+            self.assertEqual(tip.rstrip(".").count(". "), 0, tip)
 
 
 class Tooltips(unittest.TestCase):
@@ -479,6 +531,8 @@ class Readable(unittest.TestCase):
         self.assertEqual(self.P.words("UseVBO"), "Use VBO")
 
     def test_message_boxes_carry_the_title(self):
+        """Titled SafetyNet everywhere (macOS ignores it, set anyway), a
+        short bold first line, the sentence as the informative text."""
         made = []
 
         class Box:
@@ -492,13 +546,36 @@ class Readable(unittest.TestCase):
                 return lambda *a: self.calls.append((n, a)) or 0
 
         qt = types.SimpleNamespace(QMessageBox=Box)
-        for platform, want in (("darwin", [("setText", ("SafetyNet",)), ("setInformativeText", ("Hello.",))]), ("linux", [("setText", ("Hello.",))])):
+        for platform in ("darwin", "linux", "win32"):
             with mock.patch.object(sys, "platform", platform):
-                self.P.message(qt, None, "Hello.")
+                self.P.message(qt, None, "Hello there.", headline="Recovered copy opened")
             calls = made[-1].calls
             self.assertIn(("setWindowTitle", ("SafetyNet",)), calls)
-            for c in want:
-                self.assertIn(c, calls)
+            self.assertIn(("setText", ("<b>Recovered copy opened</b>",)), calls)
+            self.assertIn(("setInformativeText", ("Hello there.",)), calls)
+
+    def test_never_saved_copy(self):
+        headline, text = self.P.never_saved("WindowTest (recovered 18:48)")
+        self.assertEqual(headline, "Recovered copy opened")
+        self.assertEqual(text, "WindowTest (recovered 18:48) is open. It has never been saved, so save it where you like.")
+
+    def test_every_message_has_a_headline(self):
+        """Every message box SafetyNet shows names its short first line."""
+        for f in ("panel.py", "commands.py"):
+            tree = ast.parse(open(os.path.join(ROOT, "safetynet", f), encoding="utf-8").read())
+            for n in ast.walk(tree):
+                if not isinstance(n, ast.Call):
+                    continue
+                fn = getattr(n.func, "attr", None) or getattr(n.func, "id", None)
+                kw = {k.arg for k in n.keywords}
+                if fn == "say" and f == "commands.py":
+                    self.assertTrue(len(n.args) >= 2 or "headline" in kw, f"{f}:{n.lineno}")
+                elif fn == "say" and f == "panel.py" and isinstance(n.func, ast.Attribute):
+                    self.assertTrue(len(n.args) >= 3 or "headline" in kw, f"{f}:{n.lineno}")
+                elif fn == "message" and n.args and getattr(n.args[0], "id", "") == "QtWidgets":
+                    self.assertTrue(len(n.args) >= 5 or "headline" in kw, f"{f}:{n.lineno}")
+            src = open(os.path.join(ROOT, "safetynet", f), encoding="utf-8").read()
+            self.assertNotIn("was never saved to a file", src)
 
 
 class NoAgentLink(unittest.TestCase):

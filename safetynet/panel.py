@@ -104,58 +104,119 @@ def recovered_rows(documents, per_doc=5):
     return [r for _, r in sorted(rows, key=lambda x: x[0], reverse=True)]
 
 
-def recovered_groups(documents, open_names=(), today=None, per_doc=8):
-    """The Recovered Copies by document, newest first: one group a document
-    with its latest copy, how many it has, and the rest under it.
-    [{"label", "document", "latest": (when, what, data), "count", "rest":
-    [(when, what, data)], "expanded"}]. A document no longer open whose
-    latest copy is older than today starts folded (about fifty rows of a
-    day's scratch autosaves before)."""
+SOURCES = {"freecad": "FreeCAD autosave", "autosave": "SafetyNet autosave", "checkpoint": "checkpoint"}
+# A closed document whose newest copy is older than this goes under Older.
+OLDER_AFTER_S = 2 * 3600
+
+
+def source_words(source):
+    """Where a copy came from, in words: freecad -> FreeCAD autosave."""
+    s = str(source or "")
+    return SOURCES.get(s, s)
+
+
+def _stamp(text):
+    """A time as SafetyNet writes it, as a datetime (None when unreadable)."""
     import datetime
 
-    today = today or datetime.date.today().isoformat()
-    out = []
-    for d in documents or []:
-        copies = sorted(d.get("copies") or [], key=lambda c: str(c.get("time", "")), reverse=True)
-        if not copies:
+    for f in _STAMPS:
+        try:
+            return datetime.datetime.strptime(str(text or "").strip(), f)
+        except ValueError:
             continue
+    return None
+
+
+def recovered_groups(documents, open_names=(), now=None, per_doc=8):
+    """The Recovered Copies by original document, newest first: copies of
+    "Box", "Box_recovered", "Box_recovered1" and "Box (recovered 18:48)"
+    are one group, its newest copy, how many it has and the rest under it.
+    [{"label", "document", "latest": (when, what, data), "count", "rest":
+    [(when, what, data)], "time", "open", "older", "expanded"}]. A group none
+    of whose documents is open and whose newest copy is over two hours old
+    is "older" (the panel folds those under one Older row); only the groups
+    of open documents start unfolded."""
+    import datetime
+
+    from .recovery import original_label, original_name
+
+    now = now or datetime.datetime.now()
+    opened = set(open_names or ())
+    groups = {}
+    for d in documents or []:
+        if not d.get("copies"):
+            continue
+        key = original_name(d.get("document") or d.get("label"))
+        g = groups.setdefault(key, {"copies": [], "open": False, "labels": []})
         data = {"document": d.get("document"), "label": d.get("label")}
-        rows = [(when(c.get("time", "")), f"{d.get('label')}: {c.get('source', '')}", data) for c in copies[:per_doc]]
-        latest = str(copies[0].get("time", ""))
-        is_open = d.get("document") in set(open_names or ())
-        out.append({"label": d.get("label"), "document": d.get("document"), "latest": rows[0], "count": len(copies),
-                    "rest": rows[1:], "time": latest, "expanded": is_open or _day(latest) >= _day(today)})
+        g["open"] = g["open"] or d.get("document") in opened
+        g["labels"].append(original_label(d.get("label") or d.get("document")))
+        g["copies"] += [(str(c.get("time", "")), c, data) for c in d.get("copies")]
+    out = []
+    for key, g in groups.items():
+        copies = sorted(g["copies"], key=lambda x: x[0], reverse=True)
+        label = g["labels"][0] if g["labels"] else key
+        for lab in g["labels"]:  # the shortest: the original's own label
+            label = lab if len(lab) < len(label) else label
+        rows = [(when(t), source_words(c.get("source")), data) for t, c, data in copies[:per_doc]]
+        latest = copies[0][0]
+        made = _stamp(latest)
+        older = not g["open"] and made is not None and (now - made).total_seconds() > OLDER_AFTER_S
+        out.append({"label": label, "document": key, "latest": rows[0], "count": len(copies), "rest": rows[1:],
+                    "time": latest, "open": g["open"], "older": older, "expanded": g["open"]})
     out.sort(key=lambda g: g["time"], reverse=True)
     return out
 
 
-def _day(text):
-    """The day of a time as SafetyNet writes it (2026-11-15 12:41 or
-    20261115-124100), or of a date: 20261115."""
-    digits = "".join(ch for ch in str(text) if ch.isdigit())
-    return digits[:8]
+def group_text(g):
+    """A document's row: WindowTest — FreeCAD autosave (6 copies)."""
+    n = g["count"]
+    return f"{g['label']} — {g['latest'][1]}" + (f" ({n} copies)" if n > 1 else "")
 
 
-def message(QtWidgets, parent, text, kind="information", title=TITLE):
-    """A message box with SafetyNet's title. macOS shows no window title on
-    a message box, so there the title is the bold first line and the text
-    goes under it."""
-    import sys
+# ---- message boxes: SafetyNet's title, a short bold line, the rest under it ------------
+
+HEADLINES = {"information": "Done", "warning": "Couldn't do that", "question": "Are you sure?"}
+
+
+def message(QtWidgets, parent, text, kind="information", headline=None, title=TITLE):
+    """A message box as FreeCAD's own are laid out: the window titled
+    SafetyNet (macOS shows no title on a message box, set anyway), a short
+    bold first line, and the sentence under it as the informative text."""
+    from html import escape
 
     icons = {"information": "Information", "warning": "Warning", "question": "Question"}
     box = QtWidgets.QMessageBox(parent)
     box.setIcon(getattr(QtWidgets.QMessageBox, icons.get(kind, "Information")))
     box.setWindowTitle(title)
-    if sys.platform == "darwin":
-        box.setText(title)
-        box.setInformativeText(text)
-    else:
-        box.setText(text)
+    box.setText(f"<b>{escape(headline or HEADLINES.get(kind, TITLE))}</b>")
+    box.setInformativeText(str(text))
     if kind == "question":
         box.setStandardButtons(QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
         box.setDefaultButton(QtWidgets.QMessageBox.No)
     run = getattr(box, "exec", None) or box.exec_
     return run()
+
+
+def never_saved(name):
+    """What to say when a recovered copy opened that has no file of its own:
+    (headline, text)."""
+    return "Recovered copy opened", f"{name} is open. It has never been saved, so save it where you like."
+
+
+# ---- the buttons: each acts on one kind of row ------------------------------------------
+
+BUTTONS = (("Use Copy", "recover", "Open the picked copy and offer to save it over its file."),
+           ("Roll Back", "pref", "Put the settings back as they were before the picked change."),
+           ("Approve Macro", "macro", "Let Agent Link run the picked macro."),
+           ("Run Macro", "macro", "Run the picked macro through Agent Link."))
+NEEDS_AGENT_LINK = {"Run Macro"}
+
+
+def buttons_for(kind, hosted):
+    """The buttons that act on a row of this kind (recover, pref, macro;
+    None for a section title or the Older row)."""
+    return {label for label, k, _ in BUTTONS if k == kind and (hosted or label not in NEEDS_AGENT_LINK)}
 
 
 def qss(r):
@@ -224,22 +285,23 @@ def widget(runner, hosted=False):
             except Exception:
                 pass
             lay.addWidget(self.tree, 1)
-            # Two by two: four in a row were cut off in a narrow dock.
+            # Two by two: four in a row were cut off in a narrow dock. The
+            # copies' and settings' buttons on the first row, the macros' on
+            # the second; each enabled only when the picked row is its kind.
             row = QtWidgets.QGridLayout()
             self.buttons = {}
-            for label, tip, fn in (("Use Copy", "Save the picked copy over its file.", self.accept),
-                                   ("Roll Back", "Undo the picked settings change.", self.rollback),
-                                   ("Approve", "Let Agent Link run the picked macro.", self.approve),
-                                   ("Run", "Run the picked macro.", self.run)):
+            acts = {"Use Copy": self.accept, "Roll Back": self.rollback, "Approve Macro": self.approve, "Run Macro": self.run}
+            for label, _kind, tip in BUTTONS:
                 b = QtWidgets.QPushButton(label)
                 b.setToolTip(tip)
-                b.clicked.connect(fn)
+                b.clicked.connect(acts[label])
+                b.setEnabled(False)
                 row.addWidget(b, len(self.buttons) // 2, len(self.buttons) % 2)
                 self.buttons[label] = b
             if not hosted:
                 # A saved macro runs its calls through Agent Link.
-                self.buttons["Run"].setEnabled(False)
-                self.buttons["Run"].setToolTip("Needs Agent Link for FreeCAD.")
+                self.buttons["Run Macro"].setToolTip("Needs Agent Link for FreeCAD.")
+            self.tree.itemSelectionChanged.connect(self.picked)
             lay.addLayout(row)
             self.roles = theme.roles(self)
             theme.follow(self, self._styled)
@@ -248,13 +310,30 @@ def widget(runner, hosted=False):
             self.roles = r
             return qss(r)
 
-        def say(self, text, kind="information"):
-            message(QtWidgets, self, text, kind)
+        def say(self, text, kind="information", headline=None):
+            message(QtWidgets, self, text, kind, headline)
+
+        def kind_of(self, it):
+            raw = it.data(0, QtCore.Qt.UserRole) if it is not None else None
+            try:
+                return (json.loads(raw) or {}).get("kind") if isinstance(raw, str) and raw else None
+            except ValueError:
+                return None
+
+        def enable_for(self, kind):
+            """Only the buttons that act on a row of this kind enabled."""
+            on = buttons_for(kind, self.hosted)
+            for label, b in self.buttons.items():
+                b.setEnabled(label in on)
+            return on
+
+        def picked(self):
+            return self.enable_for(self.kind_of(self.tree.currentItem()))
 
         def do(self, tool, args):
             ok, r = runner(tool, args)
             if not ok:
-                self.say((r.get("error") or {}).get("message", str(r)), "warning")
+                self.say((r.get("error") or {}).get("message", str(r)), "warning", "Couldn't do that")
             self.fill()
             return ok, r
 
@@ -282,6 +361,7 @@ def widget(runner, hosted=False):
                 self.held.setText(f"Held for your go: {q.get('notice') or len(held)}" if held else "Nothing held.")
                 self.go.setEnabled(bool(held))
             self.tree.clear()
+            self.enable_for(None)
 
             def section(title, rows, kind):
                 top = QtWidgets.QTreeWidgetItem([title, "", ""])
@@ -306,26 +386,36 @@ def widget(runner, hosted=False):
                                for m in (ml.get("macros") or [])] if ok else [], "macro")
 
         def recovered(self, groups):
-            """Recovered Copies by document: a row a document (its latest
-            copy and the count, which Use Copy acts on as well), its other
-            copies under it; folded when closed and older than today."""
+            """Recovered Copies by original document: a row a document (its
+            newest copy and the count, which Use Copy acts on as well), its
+            other copies under it, unfolded only for open documents; the
+            closed ones over two hours old under one folded Older row."""
             top = QtWidgets.QTreeWidgetItem(["Recovered Copies", "", ""])
             top.setForeground(0, QtGui.QBrush(QtGui.QColor(self.roles["accent"])))
             muted = QtGui.QBrush(QtGui.QColor(self.roles["muted"]))
+            older = [g for g in groups if g.get("older")]
+            fold = None
+            if older:
+                fold = QtWidgets.QTreeWidgetItem(["", "Older", f"{len(older)} closed documents"])
+                fold.setToolTip(2, "Copies of closed documents, over two hours old.")
+                fold.setForeground(1, muted)
             for g in groups:
                 when_, what, data = g["latest"]
                 n = g["count"]
-                head = QtWidgets.QTreeWidgetItem(["", str(when_), f"{what} ({n} copies)" if n > 1 else str(what)])
+                head = QtWidgets.QTreeWidgetItem(["", str(when_), group_text(g)])
                 head.setToolTip(2, f"{g['label']}: {n} saved copies, newest first")
                 head.setData(0, QtCore.Qt.UserRole, json.dumps({"kind": "recover", **data}))
                 for r in g["rest"]:
                     it = QtWidgets.QTreeWidgetItem(["", str(r[0]), str(r[1])])
-                    it.setToolTip(2, str(r[1]))
+                    it.setToolTip(2, f"{r[2].get('label')}: {r[1]}")
                     it.setData(0, QtCore.Qt.UserRole, json.dumps({"kind": "recover", **r[2]}))
                     it.setForeground(1, muted)
                     head.addChild(it)
-                top.addChild(head)
+                (fold if g.get("older") else top).addChild(head)
                 head.setExpanded(bool(g["expanded"]) and bool(g["rest"]))
+            if fold is not None:
+                top.addChild(fold)
+                fold.setExpanded(False)
             self.tree.addTopLevelItem(top)
             top.setFirstColumnSpanned(True)
             top.setExpanded(bool(groups))
@@ -336,7 +426,7 @@ def widget(runner, hosted=False):
             raw = it.data(0, QtCore.Qt.UserRole) if it else None
             d = json.loads(raw) if raw else None
             if not d or d.get("kind") != kind:
-                self.say(f"Pick a line under {dict(recover='Recovered Copies', pref='Settings Changes', macro='Macros')[kind]} first.")
+                self.say(f"Pick a line under {dict(recover='Recovered Copies', pref='Settings Changes', macro='Macros')[kind]} first.", headline="Nothing picked")
                 return None
             return d
 
@@ -351,7 +441,8 @@ def widget(runner, hosted=False):
                 rec = (r.get("recovered") or [None])[0] if ok else None
                 if rec:
                     if not rec.get("file"):
-                        self.say(f"{rec['as']} is open; it was never saved to a file — save it where you like.")
+                        headline, text = never_saved(rec["as"])
+                        self.say(text, headline=headline)
                         return
                     typed = self.typed("Use Recovered Copy", f"save over {os.path.basename(rec['file'])}")
                     if typed:
