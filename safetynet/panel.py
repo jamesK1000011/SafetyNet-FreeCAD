@@ -267,6 +267,12 @@ def widget(runner, hosted=False):
             return runner(tool, args)
 
         def fill(self):
+            from . import layout
+
+            with layout.keep_marks():  # a refresh changes nothing: the "*" as it was
+                self._fill()
+
+        def _fill(self):
             if self.hosted:
                 ok, d = self.read("doc_switch", {})
                 name = (d.get("label") or d.get("document")) if ok else None
