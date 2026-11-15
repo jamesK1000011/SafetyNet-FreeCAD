@@ -7,14 +7,20 @@
   <maintainer email="jamesK1000011@users.noreply.github.com">jamesK1000011</maintainer>
   <license file="LICENSE">LGPL-2.1-or-later</license>
   <url type="repository" branch="main">https://github.com/jamesK1000011/SafetyNet-FreeCAD</url>
+  <url type="bugtracker">https://github.com/jamesK1000011/SafetyNet-FreeCAD/issues</url>
+  <url type="readme">https://github.com/jamesK1000011/SafetyNet-FreeCAD/blob/main/README.md</url>
   <freecadmin>1.0.0</freecadmin>
   <icon>safetynet/icons/SafetyNet_Workbench.svg</icon>
   <tag>recovery</tag>
   <tag>autosave</tag>
   <tag>macros</tag>
+  <tag>checkpoints</tag>
+  <tag>backup</tag>
+  <tag>agent</tag>
   <content>
     <workbench>
       <name>SafetyNet</name>
+      <description>Checkpoints, recovered copies after a crash, FreeCAD's settings history and rollback, and approved macros.</description>
       <classname>SafetyNetWorkbench</classname>
       <icon>safetynet/icons/SafetyNet_Workbench.svg</icon>
       <subdirectory>./</subdirectory>
