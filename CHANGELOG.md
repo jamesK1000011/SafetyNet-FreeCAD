@@ -22,4 +22,4 @@ The first release, 0.1.0, is being prepared.
   the Session panel as its own dock when Agent Link is not installed.
 - Release preparation: a beginner's README with a generated tool list,
   complete Addon Manager metadata, licence headers checked for every file,
-  and this changelog.
+  how to uninstall, a privacy statement, and this changelog.

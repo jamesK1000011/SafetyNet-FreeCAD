@@ -118,6 +118,23 @@ SafetyNet never imports Agent Link. Only `safetynet/agentlink_families.py`
 and the `fam_*` modules it loads do, and only Agent Link loads them. Without
 SafetyNet, Agent Link has FreeCAD's undo only.
 
+## Uninstall
+
+- **Addon Manager**: Tools ▸ Addon manager ▸ SafetyNet ▸ Uninstall, then
+  restart FreeCAD.
+- **By hand, or installed by the Agent Link extension**: delete the
+  `SafetyNet` folder from FreeCAD's `Mod` folder, and restart FreeCAD.
+- **Your files**: the saved copies, settings snapshots and approvals under
+  `~/AgentLink` (see [Where it keeps things](#where-it-keeps-things)) are
+  yours to keep or delete. Your own documents were never changed.
+
+## Privacy
+
+SafetyNet has no telemetry and makes no network connection. Everything it
+keeps stays on your computer under `~/AgentLink`. A macro runs only after you
+approved it yourself. With Agent Link, what the agent reads goes to the AI
+provider your MCP client uses, under that provider's terms.
+
 ## For developers
 
 ```
