@@ -35,6 +35,7 @@ safetynet/workbench.py
 tests/data/theme.cfg
 tests/test_gui.py
 tests/test_layout.py
+tests/test_layout_placer.py
 tests/test_release.py
 tests/test_store.py
 tests/test_with_agentlink.py
