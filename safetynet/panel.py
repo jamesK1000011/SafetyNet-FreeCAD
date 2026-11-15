@@ -226,9 +226,17 @@ def widget(runner, hosted=False):
             self.fill()
             return ok, r
 
+        def read(self, tool, args):
+            """The panel's own refresh: under Agent Link quiet (not the
+            agent's work: nothing shown, nothing in Activity); the person's
+            clicks go through do() and show."""
+            if getattr(runner, "quiet_ok", False):
+                return runner(tool, args, quiet=True)
+            return runner(tool, args)
+
         def fill(self):
             if self.hosted:
-                ok, d = runner("doc_switch", {})
+                ok, d = self.read("doc_switch", {})
                 name = (d.get("label") or d.get("document")) if ok else None
                 self.pinned.setText(f"Agent works in: {name}" if name else "Agent works in: the document in front")
                 q = _load(path("queue.json"), {}) or {}
@@ -250,12 +258,12 @@ def widget(runner, hosted=False):
                 top.setFirstColumnSpanned(True)
                 top.setExpanded(bool(rows))
 
-            ok, rec = runner("app_recover", {"action": "list"})
+            ok, rec = self.read("app_recover", {"action": "list"})
             section("Recovered Copies", recovered_rows(rec.get("documents") if ok else []), "recover")
-            ok, ph = runner("pref_history", {"limit": 10})
+            ok, ph = self.read("pref_history", {"limit": 10})
             section("Settings Changes", [(when(c.get("time", "")), change_text(c), {"to": c.get("change")})
                                          for c in (ph.get("changes") or [])] if ok else [], "pref")
-            ok, ml = runner("macro_list", {})
+            ok, ml = self.read("macro_list", {})
             section("Macros", [(m.get("state", ""), m.get("name"), {"name": m.get("name")})
                                for m in (ml.get("macros") or [])] if ok else [], "macro")
 

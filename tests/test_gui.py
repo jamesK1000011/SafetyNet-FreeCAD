@@ -333,6 +333,27 @@ class SessionWidget(unittest.TestCase):
             self.assertIn(("setVisible", (True,)), row.calls)
         self.assertEqual(asked[0], "doc_switch")
 
+    def test_own_refresh_is_quiet_under_agent_link(self):
+        """The panel's own refresh is not the agent's work: with Agent
+        Link's caller every read goes quiet (nothing shown, nothing in
+        Activity); a click (do) does not."""
+        seen = []
+
+        def runner(tool, args, quiet=False):
+            seen.append((tool, quiet))
+            return True, {}
+
+        runner.quiet_ok = True
+        with gui_stubs():
+            from safetynet import panel
+
+            w = panel.widget(runner, hosted=True)
+            w.fill()
+            self.assertEqual(seen, [(t, True) for t in ("doc_switch", "app_recover", "pref_history", "macro_list")])
+            del seen[:]
+            w.do("queue_go", {})
+        self.assertEqual(seen[0], ("queue_go", False))
+
     def test_group_titles_span_the_row(self):
         w, _ = self.build(False)
         tops = [c[1][0] for c in w.tree.calls if c[0] == "addTopLevelItem"]
