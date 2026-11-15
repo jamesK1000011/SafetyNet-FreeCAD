@@ -101,7 +101,7 @@ class _Cmd:
 
 
 class Checkpoint(_Cmd):
-    menu, pixmap = "Checkpoint now", "SafetyNet_Checkpoint"
+    menu, pixmap = "Checkpoint Now", "SafetyNet_Checkpoint"
     tip = "Save a copy of the document now, to come back to past the undo stack and across restarts. Your file is not touched."
 
     def IsActive(self):
@@ -118,7 +118,7 @@ class Checkpoint(_Cmd):
 
 
 class Restore(_Cmd):
-    menu, pixmap = "Restore checkpoint…", "SafetyNet_Restore"
+    menu, pixmap = "Restore Checkpoint…", "SafetyNet_Restore"
     tip = "Go back to one of this document's checkpoints (the state before is checkpointed first, so a restore can be undone the same way)."
 
     def IsActive(self):
@@ -131,7 +131,7 @@ class Restore(_Cmd):
         rows = [(f"{c['checkpoint']}{' · ' + c['name'] if c.get('name') else ''} · {c.get('time', '')}{' · auto' if c.get('auto') else ''}", c["checkpoint"])
                 for c in reversed(r.get("checkpoints") or [])]
         if not rows:
-            say(f"{r.get('document')} has no checkpoints yet: Checkpoint now takes one.")
+            say(f"{r.get('document')} has no checkpoints yet: Checkpoint Now takes one.")
             return
         cp = pick("Restore checkpoint", f"Back to which checkpoint of {r.get('document')}?", rows)
         if cp:
@@ -141,7 +141,7 @@ class Restore(_Cmd):
 
 
 class Recover(_Cmd):
-    menu, pixmap = "Recovered copies…", "SafetyNet_Recover"
+    menu, pixmap = "Recovered Copies…", "SafetyNet_Recover"
     tip = "Documents back after a crash or a hang: open a saved copy beside its file, then, if you choose, save it over the file."
 
     def Activated(self):
@@ -187,7 +187,7 @@ def _change_text(c):
 
 
 class SettingsHistory(_Cmd):
-    menu, pixmap = "Settings history…", "preferences-system"
+    menu, pixmap = "Settings History…", "preferences-system"
     tip = "The settings changes logged (made through Agent Link, and rollbacks), newest first."
 
     def Activated(self):
@@ -196,7 +196,7 @@ class SettingsHistory(_Cmd):
 
 
 class Rollback(_Cmd):
-    menu, pixmap = "Roll back setting…", "edit-undo"
+    menu, pixmap = "Roll Back Setting…", "edit-undo"
     tip = "Put FreeCAD's settings back as they were before a logged change (the state before is snapshotted too)."
 
     def Activated(self):
@@ -250,7 +250,7 @@ class Macros(_Cmd):
 
 
 class Panel(_Cmd):
-    menu, pixmap = "Panel", "SafetyNet_Workbench"
+    menu, pixmap = "SafetyNet Panel", "SafetyNet_Workbench"
     tip = "The Session panel: recovered copies, settings changes and macros (in Agent Link's panel when it is loaded, else SafetyNet's own)."
 
     def Activated(self):

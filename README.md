@@ -44,16 +44,16 @@ restart FreeCAD.
 **The SafetyNet workbench.** Pick it from the workbench list. Its toolbar and
 its **SafetyNet** menu have:
 
-- **Checkpoint now**: save a copy of the document to come back to.
-- **Restore checkpoint…**: go back to one.
-- **Recovered copies…**: after a crash, open the newest good copy beside your
+- **Checkpoint Now**: save a copy of the document to come back to.
+- **Restore Checkpoint…**: go back to one.
+- **Recovered Copies…**: after a crash, open the newest good copy beside your
   file. It is saved over your file only after you type the confirm.
-- **Settings history…** and **Roll back setting…**: see and undo changes to
+- **Settings History…** and **Roll Back Setting…**: see and undo changes to
   FreeCAD's settings. A setting read only at start applies when FreeCAD next
   opens. With Agent Link, FreeCAD restarts around the file for you.
 - **Macros…**: show a macro, approve it (you type the confirm), or take the
   approval back.
-- **Panel**: the Session panel.
+- **SafetyNet Panel**: the Session panel.
 
 <!-- screenshot: the SafetyNet menu open, showing all seven commands -->
 
