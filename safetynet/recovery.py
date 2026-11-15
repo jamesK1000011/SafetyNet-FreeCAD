@@ -5,6 +5,9 @@
 # only with their typed say-so. Also what a hidden FreeCAD holds (hidden.json,
 # for whoever restarts it after a crash), the documents to reopen from copies
 # after a restart (reopen.json), and FreeCAD's own AutoSave kept on.
+# A copy is named after its original once, however often it was recovered,
+# one per original (a recovered copy is not brought back beside its own
+# original), and kept off File > Open Recent.
 #
 # Plain FreeCAD, imported where it is used.
 
@@ -22,6 +25,89 @@ from .refusal import Refused
 RECOVERED_FOR = "AgentLinkRecoveredFor"
 # Past this a reopen list is stale (a restart that never came back).
 REOPEN_LIMIT = 600.0
+# The folder a recovered copy is opened from (open_copy).
+TMP_PREFIX = "agentlink-recovered-"
+
+
+# ---- names: a recovered copy named after its original, once -----------------------------
+
+_NAME_TAIL = re.compile(r"(?:_recovered\d*)+$")
+_LABEL_TAIL = re.compile(r"(?:\s*\(recovered[^)]*\)|_recovered\d*)+\s*$")
+
+
+def original_name(name):
+    """A document's name with every "_recovered", "_recovered1" … taken off
+    its end: the name of the document it was recovered from."""
+    n = str(name or "")
+    return _NAME_TAIL.sub("", n) or n
+
+
+def original_label(label):
+    """A label with every " (recovered HH:MM)" and "_recovered…" taken off
+    its end: AgentLink_recovered (recovered 10:02) (recovered 10:05) -> AgentLink."""
+    t = str(label or "")
+    return _LABEL_TAIL.sub("", t).strip() or t
+
+
+def copy_label(label):
+    """A recovered copy's label with one suffix: the original's label and
+    the newest "(recovered HH:MM)" it carries, or "(recovered)"."""
+    t = str(label or "")
+    times = re.findall(r"\(recovered ([^)]*)\)", t)
+    return f"{original_label(t)} (recovered{' ' + times[-1] if times else ''})"
+
+
+def from_copy_folder(file):
+    """True for a file open_copy opened (in a temporary agentlink-recovered- folder)."""
+    return TMP_PREFIX in os.path.basename(os.path.dirname(str(file or "")))
+
+
+def is_recovered(d):
+    """True for a document entry ({ name, label, file, recovered }) that is
+    itself a recovered copy not yet saved over its file: marked so, opened
+    from open_copy's folder, or never saved and named like one."""
+    f = d.get("file") or ""
+    if d.get("recovered") or from_copy_folder(f):
+        return True
+    return not f and (original_name(d.get("name")) != str(d.get("name") or "") or original_label(d.get("label")) != str(d.get("label") or ""))
+
+
+def _keys(d):
+    """What names a document's original: its file and its name."""
+    f = d.get("original") if is_recovered(d) else d.get("file")
+    out = {"name:" + original_name(d.get("name") or d.get("label"))}
+    if f and not from_copy_folder(f):
+        out.add("file:" + os.path.abspath(f))
+    return out
+
+
+def dedupe(documents):
+    """The documents to bring back, one per original: a recovered copy is
+    dropped when its original or an earlier copy of it is in the list too.
+    Each entry gets "base" and "baseLabel", the original's name and label,
+    to name the new copy by; a copy's "file" is its original's."""
+    docs = [d for d in documents or [] if isinstance(d, dict) and (d.get("name") or d.get("label"))]
+    taken = set()
+    for d in docs:
+        if not is_recovered(d):
+            taken |= _keys(d)
+    out = []
+    for d in docs:
+        e = dict(d)
+        if is_recovered(d):
+            if _keys(d) & taken:
+                continue
+            taken |= _keys(d)
+            e["file"] = d.get("original") or ""
+        e["base"] = original_name(d.get("name") or d.get("label"))
+        e["baseLabel"] = original_label(d.get("label") or d.get("name"))
+        out.append(e)
+    return out
+
+
+def recent_without_copies(files):
+    """FreeCAD's recent-files list without the recovered copies' temporary files."""
+    return [f for f in files if f and not from_copy_folder(f)]
 
 
 def recovery_sources(doc, freecad_recovery=()):
@@ -91,12 +177,36 @@ def cache_dirs():
     return out
 
 
-def open_copy(src, name, label, t):
-    """A saved copy opened beside the person's file, never over it: its own
-    name and the label "<label> (recovered HH:MM)"."""
+def forget_recent():
+    """Recovered copies' temporary files taken off File ▸ Open Recent."""
     import FreeCAD
 
-    tmpd = tempfile.mkdtemp(prefix="agentlink-recovered-")
+    try:
+        g = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/RecentFiles")
+        n = int(g.GetInt("RecentFiles", 4) or 4) + 20
+        files = [g.GetString(f"MRU{i}", "") for i in range(n)]
+        keep = recent_without_copies(files)
+        if keep == [f for f in files if f]:
+            return 0
+        for i in range(n):
+            if i < len(keep):
+                g.SetString(f"MRU{i}", keep[i])
+            elif g.GetString(f"MRU{i}", ""):
+                g.RemString(f"MRU{i}")
+        return len([f for f in files if f]) - len(keep)
+    except Exception:
+        return 0
+
+
+def open_copy(src, name, label, t):
+    """A saved copy opened beside the person's file, never over it: named
+    after the original document once, "<name>_recovered" and the label
+    "<label> (recovered HH:MM)", however often it was recovered before;
+    kept off Open Recent."""
+    import FreeCAD
+
+    name, label = original_name(name), original_label(label)
+    tmpd = tempfile.mkdtemp(prefix=TMP_PREFIX)
     tmp = os.path.join(tmpd, f"{safe(name)}_recovered.FCStd")
     shutil.copy2(src, tmp)
     nd = FreeCAD.openDocument(tmp)
@@ -105,16 +215,19 @@ def open_copy(src, name, label, t):
     except Exception:
         pass
     nd.Label = f"{label} (recovered {_hm(t)})"
+    forget_recent()
     return nd
 
 
 def recover_docs(documents, since=None):
+    """The newest copy of each document that opens, beside its file: one
+    per original (dedupe), named after the original. (recovered, failed)"""
     rec, failed = [], []
-    for d in documents or []:
-        name, label, fname = d.get("name"), d.get("label") or d.get("name"), d.get("file") or ""
+    for d in dedupe(documents):
+        name, label, fname = d.get("name"), d["baseLabel"], d.get("file") or ""
         if not name:
             continue
-        fc = [(p, t) for p, t, _ in freecad_recovery_files(cache_dirs(), label)]
+        fc = [(p, t) for p, t, _ in freecad_recovery_files(cache_dirs(), d.get("label") or label)]
         srcs = recovery_sources(name, fc)
         if not srcs:
             failed.append({"label": label, "why": "no saved copy (no checkpoint, auto-save or FreeCAD recovery file)"})
@@ -122,7 +235,7 @@ def recover_docs(documents, since=None):
         errors = []
         for src in srcs:
             try:
-                nd = open_copy(src["path"], name, label, src["t"])
+                nd = open_copy(src["path"], d["base"], label, src["t"])
             except Exception as e:
                 errors.append(f"{src['source']} {_hm(src['t'])}: {e}")
                 continue
@@ -159,8 +272,17 @@ def listing():
         fc = [(p, t) for p, t, _ in freecad_recovery_files(cache_dirs(), info["label"])]
         srcs = recovery_sources(n, fc)[:6]
         if srcs:
-            out.append({"document": n, "label": info["label"], "copies": [{"source": x["source"], "time": time.strftime("%Y-%m-%d %H:%M", time.localtime(x["t"])), "path": x["path"]} for x in srcs]})
-    return out
+            out.append({"document": n, "label": info["label"], "t": srcs[0]["t"],
+                        "copies": [{"source": x["source"], "time": time.strftime("%Y-%m-%d %H:%M", time.localtime(x["t"])), "path": x["path"]} for x in srcs]})
+    return newest_first(out)
+
+
+def newest_first(rows):
+    """Documents with copies, the one with the newest copy first."""
+    rows = sorted(rows, key=lambda r: -float(r.get("t") or 0))
+    for r in rows:
+        r.pop("t", None)
+    return rows
 
 
 def accept(ref, confirm):
@@ -206,8 +328,21 @@ def write_hidden():
     the one that starts it again after a crash to recover (app_recover)."""
     import FreeCAD
 
-    _save(path("hidden.json"), {"pid": os.getpid(), "t": time.time(),
-                                "docs": [{"name": d.Name, "label": d.Label, "file": d.FileName or ""} for d in FreeCAD.listDocuments().values()]})
+    _save(path("hidden.json"), {"pid": os.getpid(), "t": time.time(), "docs": [entry(d) for d in FreeCAD.listDocuments().values()]})
+
+
+def entry(d):
+    """An open document as recovery lists it; a recovered copy marked, with
+    the file it was recovered for as "original"."""
+    e = {"name": d.Name, "label": d.Label, "file": d.FileName or ""}
+    raw = (getattr(d, "Meta", None) or {}).get(RECOVERED_FOR)
+    if raw or from_copy_folder(e["file"]):
+        e["recovered"] = True
+        try:
+            e["original"] = json.loads(raw).get("file") or "" if raw else ""
+        except ValueError:
+            e["original"] = ""
+    return e
 
 
 # ---- documents reopened from copies after a restart ----------------------------------------
@@ -221,12 +356,29 @@ def keep_for_reopen(docs):
     saved copied to its auto-save folder, to reopen beside its file when
     FreeCAD is back. [{ name, label, file, copy, t }]"""
     out = []
+    try:
+        import FreeCAD
+
+        others = [entry(x) for x in FreeCAD.listDocuments().values() if x not in docs]
+    except Exception:
+        others = []
     for d in docs:
         f = autosave.copy_now(d)
-        out.append({"name": d.Name, "label": d.Label, "file": d.FileName or "", "copy": f, "t": time.time()})
+        out.append({**entry(d), "copy": f, "t": time.time()})
+    # A recovered copy whose original comes back too is not reopened again
+    # (its copy stays in its auto-save folder, under Recovered Copies).
+    out = reopen_list(others, out)
     if out:
         _save(reopen_file(), {"t": time.time(), "docs": out})
     return out
+
+
+def reopen_list(others, kept):
+    """Of the copies kept for a restart, those to reopen: one per original,
+    none for a recovered copy whose original is open (others) or kept too."""
+    left = dedupe([*[o for o in others if not is_recovered(o)], *kept])
+    want = {(e.get("name"), e.get("copy")) for e in left if e.get("copy")}
+    return [e for e in kept if (e.get("name"), e.get("copy")) in want]
 
 
 def reopen_pending(now=None):
@@ -244,12 +396,13 @@ def reopen_pending(now=None):
 
 def reopen_now():
     """Open each pending copy beside its file. The labels opened."""
-    opened = []
+    opened, fresh = [], set()
     for c in reopen_pending():
         try:
             if os.path.isfile(c.get("copy", "")):
                 nd = open_copy(c["copy"], c.get("name") or "doc", c.get("label") or c.get("name") or "doc", float(c.get("t") or time.time()))
                 opened.append(nd.Label)
+                fresh.add(nd.Name)
         except Exception as e:  # noqa: BLE001
             try:
                 import FreeCAD
@@ -257,7 +410,40 @@ def reopen_now():
                 FreeCAD.Console.PrintWarning(f"SafetyNet: could not reopen {c.get('label')} from its copy: {e}\n")
             except Exception:
                 pass
+    try:
+        tidy(fresh)
+    except Exception:  # noqa: BLE001
+        pass
     return opened
+
+
+def tidy(fresh=()):
+    """After a restart: a recovered copy FreeCAD reopened from its temporary
+    file is closed when its original is open and it has no changes of its
+    own, else named after its original once; and the temporary files are
+    taken off Open Recent. fresh: the copies just reopened, left as they are."""
+    import FreeCAD
+
+    docs = list(FreeCAD.listDocuments().values())
+    es = [(d, entry(d)) for d in docs]
+    originals = set()
+    for _, e in es:
+        if not is_recovered(e):
+            originals |= _keys(e)
+    for d, e in es:
+        if d.Name in fresh or not from_copy_folder(e["file"]):
+            continue
+        try:
+            touched = d.isTouched()
+        except Exception:
+            touched = True
+        if _keys(e) & originals and not touched:
+            FreeCAD.closeDocument(d.Name)
+            continue
+        lab = copy_label(d.Label)
+        if lab != d.Label:
+            d.Label = lab
+    forget_recent()
 
 
 class Reopen:

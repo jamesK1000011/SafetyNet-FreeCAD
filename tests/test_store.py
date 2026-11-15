@@ -170,6 +170,74 @@ class Reopen(Home):
         self.assertEqual(recovery.reopen_pending(), [])
 
 
+class RecoveredNames(unittest.TestCase):
+    """A recovered copy is named after its original once, one per original."""
+    TMP = os.path.join(tempfile.gettempdir(), recovery.TMP_PREFIX + "abc", "AgentLink_recovered.FCStd")
+
+    def test_original_name_and_label(self):
+        self.assertEqual(recovery.original_name("AgentLink_recovered_recovered1_recovered_recovered"), "AgentLink")
+        self.assertEqual(recovery.original_name("AgentLink"), "AgentLink")
+        self.assertEqual(recovery.original_label("AgentLink_recovered_recovered1_recovered_recovered"), "AgentLink")
+        self.assertEqual(recovery.original_label("Bracket (recovered 10:02) (recovered 10:05)"), "Bracket")
+        self.assertEqual(recovery.original_label("Bracket_recovered (recovered 10:02)"), "Bracket")
+        self.assertEqual(recovery.original_label("Bracket (v2)"), "Bracket (v2)")
+        self.assertEqual(recovery.copy_label("Bracket (recovered 10:02) (recovered 10:05)"), "Bracket (recovered 10:05)")
+        self.assertEqual(recovery.copy_label("Bracket_recovered1"), "Bracket (recovered)")
+
+    def test_is_recovered(self):
+        self.assertTrue(recovery.is_recovered({"name": "X", "file": self.TMP}))
+        self.assertTrue(recovery.is_recovered({"name": "X", "recovered": True}))
+        self.assertTrue(recovery.is_recovered({"name": "X_recovered", "file": ""}))
+        # a person's own saved file is theirs, whatever its name
+        self.assertFalse(recovery.is_recovered({"name": "X_recovered", "file": "/work/X_recovered.FCStd"}))
+        self.assertFalse(recovery.is_recovered({"name": "X", "file": "/work/X.FCStd"}))
+
+    def test_dedupe_by_original(self):
+        docs = [{"name": "AgentLink_recovered", "label": "AgentLink (recovered 10:00)", "file": self.TMP},
+                {"name": "AgentLink", "label": "AgentLink", "file": "/work/AgentLink.FCStd"},
+                {"name": "AgentLink_recovered1", "label": "AgentLink (recovered 10:05)", "file": "", "recovered": True, "original": "/work/AgentLink.FCStd"},
+                {"name": "Unnamed_recovered1", "label": "Unnamed (recovered 1:00)", "file": ""},
+                {"name": "Unnamed_recovered_recovered", "label": "Unnamed_recovered (recovered 2:00)", "file": ""},
+                {"name": "Bracket", "label": "Bracket", "file": ""}]
+        out = recovery.dedupe(docs)
+        self.assertEqual([d["name"] for d in out], ["AgentLink", "Unnamed_recovered1", "Bracket"])
+        self.assertEqual([(d["base"], d["baseLabel"]) for d in out], [("AgentLink", "AgentLink"), ("Unnamed", "Unnamed"), ("Bracket", "Bracket")])
+
+    def test_a_copy_alone_is_recovered_for_its_original_file(self):
+        out = recovery.dedupe([{"name": "AgentLink_recovered", "label": "AgentLink (recovered 10:00)", "file": self.TMP,
+                                "recovered": True, "original": "/work/AgentLink.FCStd"}])
+        self.assertEqual(len(out), 1)
+        self.assertEqual((out[0]["base"], out[0]["baseLabel"], out[0]["file"]), ("AgentLink", "AgentLink", "/work/AgentLink.FCStd"))
+
+    def test_reopen_list_skips_copies_of_open_originals(self):
+        others = [{"name": "AgentLink", "label": "AgentLink", "file": "/work/AgentLink.FCStd"}]
+        kept = [{"name": "AgentLink_recovered", "label": "AgentLink (recovered 10:00)", "file": self.TMP, "copy": "/c/1"},
+                {"name": "Bracket", "label": "Bracket", "file": "/work/Bracket.FCStd", "copy": "/c/2"},
+                {"name": "Bracket_recovered", "label": "Bracket (recovered 9:00)", "file": "", "copy": "/c/3"}]
+        self.assertEqual([e["copy"] for e in recovery.reopen_list(others, kept)], ["/c/2"])
+
+    def test_recent_files_lose_the_copies(self):
+        self.assertEqual(recovery.recent_without_copies(["/work/A.FCStd", self.TMP, ""]), ["/work/A.FCStd"])
+
+    def test_forget_recent_rewrites_the_list(self):
+        import types
+        from unittest import mock
+
+        vals = {"MRU0": self.TMP, "MRU1": "/work/A.FCStd", "MRU2": self.TMP.replace("abc", "def"), "MRU3": "/work/B.FCStd"}
+        grp = types.SimpleNamespace(GetInt=lambda n, d=0: 4, GetString=lambda n, d="": vals.get(n, d),
+                                    SetString=lambda n, v: vals.__setitem__(n, v), RemString=lambda n: vals.pop(n, None))
+        fc = types.SimpleNamespace(ParamGet=lambda *_: grp)
+        with mock.patch.dict(sys.modules, {"FreeCAD": fc}):
+            self.assertEqual(recovery.forget_recent(), 2)
+            self.assertEqual(recovery.forget_recent(), 0)
+        self.assertEqual(vals, {"MRU0": "/work/A.FCStd", "MRU1": "/work/B.FCStd"})
+
+    def test_listing_newest_first(self):
+        rows = recovery.newest_first([{"document": "A", "t": 1}, {"document": "B", "t": 3}, {"document": "C", "t": 2}])
+        self.assertEqual([r["document"] for r in rows], ["B", "C", "A"])
+        self.assertNotIn("t", rows[0])
+
+
 class SettingsEvents(Home):
     def test_changed_logs_with_the_snapshot_taken_before(self):
         settings._pending.update({"snapshot": "/snap.cfg", "tool": "pref_set", "t": time.time()})

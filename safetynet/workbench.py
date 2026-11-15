@@ -39,7 +39,7 @@ def make_class(Gui):
 
     class SafetyNetWorkbench(Gui.Workbench):
         MenuText = "SafetyNet"
-        ToolTip = "Checkpoints, recovered copies after a crash, FreeCAD's settings history and rollback, and approved macros"
+        ToolTip = "Checkpoints, recovered copies, settings history and macros."
         Icon = os.path.join(ICONS, "SafetyNet_Workbench.svg")
 
         def Initialize(self):

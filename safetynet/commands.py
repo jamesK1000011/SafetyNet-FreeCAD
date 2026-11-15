@@ -104,7 +104,7 @@ class _Cmd:
 
 class Checkpoint(_Cmd):
     menu, pixmap = "Checkpoint Now", "SafetyNet_Checkpoint"
-    tip = "Save a copy of the document now, to come back to past the undo stack and across restarts. Your file is not touched."
+    tip = "Save a copy of the document to come back to later."
 
     def IsActive(self):
         return has_doc()
@@ -121,7 +121,7 @@ class Checkpoint(_Cmd):
 
 class Restore(_Cmd):
     menu, pixmap = "Restore Checkpoint…", "SafetyNet_Restore"
-    tip = "Go back to one of this document's checkpoints (the state before is checkpointed first, so a restore can be undone the same way)."
+    tip = "Go back to one of this document's checkpoints."
 
     def IsActive(self):
         return has_doc()
@@ -144,7 +144,7 @@ class Restore(_Cmd):
 
 class Recover(_Cmd):
     menu, pixmap = "Recovered Copies…", "SafetyNet_Recover"
-    tip = "Documents back after a crash or a hang: open a saved copy beside its file, then, if you choose, save it over the file."
+    tip = "Open a saved copy of a document after a crash."
 
     def Activated(self):
         r = call("app_recover", {"action": "list"})
@@ -192,7 +192,7 @@ def _change_text(c):
 
 class SettingsHistory(_Cmd):
     menu, pixmap = "Settings History…", "preferences-system"
-    tip = "The settings changes logged (made through Agent Link, and rollbacks), newest first."
+    tip = "Show the logged settings changes, newest first."
 
     def Activated(self):
         rows = _changes(50)
@@ -201,7 +201,7 @@ class SettingsHistory(_Cmd):
 
 class Rollback(_Cmd):
     menu, pixmap = "Roll Back Setting…", "edit-undo"
-    tip = "Put FreeCAD's settings back as they were before a logged change (the state before is snapshotted too)."
+    tip = "Put FreeCAD's settings back as they were before a change."
 
     def Activated(self):
         rows = _changes(20)
@@ -224,7 +224,7 @@ class Rollback(_Cmd):
 
 class Macros(_Cmd):
     menu, pixmap = "Macros…", "SafetyNet_Macros"
-    tip = "The macros in FreeCAD's macro folder: show one, approve it for Agent Link to run (you type to confirm), or take the approval back."
+    tip = "Show, approve or unapprove the macros Agent Link may run."
 
     def Activated(self):
         r = call("macro_list", {})
@@ -257,7 +257,7 @@ class Macros(_Cmd):
 
 class Panel(_Cmd):
     menu, pixmap = "SafetyNet Panel", "SafetyNet_Workbench"
-    tip = "The Session panel: recovered copies, settings changes and macros (in Agent Link's panel when it is loaded, else SafetyNet's own)."
+    tip = "Show recovered copies, settings changes and macros."
 
     def Activated(self):
         from . import panel
@@ -272,7 +272,7 @@ class Menu:
         return tuple(NAMES)
 
     def GetResources(self):
-        return {"MenuText": "SafetyNet", "ToolTip": "SafetyNet: checkpoints, recovered copies, settings and macros", "Pixmap": "SafetyNet_Workbench",
+        return {"MenuText": "SafetyNet", "ToolTip": "Checkpoints, recovered copies, settings and macros.", "Pixmap": "SafetyNet_Workbench",
                 "DropDownMenu": True, "Exclusive": False}
 
     def IsActive(self):

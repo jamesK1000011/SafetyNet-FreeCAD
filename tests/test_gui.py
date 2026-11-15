@@ -199,7 +199,7 @@ def fake_qt():
     for mod in (qtcore, qtgui):
         mod.__getattr__ = lambda n: Anything
     qtcore.QObject = Anything
-    qtcore.Qt = types.SimpleNamespace(UserRole=32, LeftDockWidgetArea=1)
+    qtcore.Qt = types.SimpleNamespace(UserRole=32, LeftDockWidgetArea=1, ElideMiddle=2)
     qtcore.QEvent = types.SimpleNamespace(PaletteChange=39)
     qtcore.QTimer = types.SimpleNamespace(singleShot=lambda ms, fn: None)
     qtgui.QWidget = Anything
@@ -339,7 +339,49 @@ class SessionWidget(unittest.TestCase):
         self.assertEqual(len(tops), 3)
         for top in tops:
             self.assertIn(("setFirstColumnSpanned", (True,)), top.calls)
-        self.assertIn(("setWordWrap", (True,)), w.tree.calls)
+        src = open(os.path.join(ROOT, "safetynet", "panel.py"), encoding="utf-8").read()
+        for t in ('section("Recovered Copies"', 'section("Settings Changes"', 'section("Macros"'):
+            self.assertIn(t, src)
+        # Long names cut in the middle (no wrapping, which would turn eliding off).
+        self.assertIn(("setWordWrap", (False,)), w.tree.calls)
+        self.assertIn("setTextElideMode", [c[0] for c in w.tree.calls])
+
+    def test_recovered_rows_newest_first(self):
+        from safetynet import panel
+
+        docs = [{"document": "A", "label": "A", "copies": [{"time": "2026-11-15 09:00", "source": "autosave"}, {"time": "2026-11-14 09:00", "source": "checkpoint"}]},
+                {"document": "B", "label": "B", "copies": [{"time": "2026-11-15 10:00", "source": "autosave"}]}]
+        rows = panel.recovered_rows(docs)
+        self.assertEqual([r[2]["document"] for r in rows], ["B", "A", "A"])
+        self.assertEqual(rows[-1][1], "A: checkpoint")
+
+
+class Tooltips(unittest.TestCase):
+    """FreeCAD's design guide: a tooltip is one short sentence."""
+
+    def strings(self):
+        out = []
+        for f in ("panel.py", "commands.py", "workbench.py"):
+            tree = ast.parse(open(os.path.join(ROOT, "safetynet", f), encoding="utf-8").read())
+            for n in ast.walk(tree):
+                if isinstance(n, ast.Assign) and any(getattr(t, "id", "") in ("tip", "ToolTip") for t in n.targets) and isinstance(n.value, ast.Constant):
+                    out.append(n.value.value)
+                elif isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "setToolTip" and n.args and isinstance(n.args[-1], ast.Constant):
+                    out.append(n.args[-1].value)
+                elif isinstance(n, ast.Tuple) and len(n.elts) == 3 and all(isinstance(e, ast.Constant) for e in n.elts[:2]) and isinstance(n.elts[2], ast.Attribute):
+                    out.append(n.elts[1].value)
+                elif isinstance(n, ast.Dict):
+                    for k, v in zip(n.keys, n.values):
+                        if isinstance(k, ast.Constant) and k.value == "ToolTip" and isinstance(v, ast.Constant):
+                            out.append(v.value)
+        return out
+
+    def test_one_short_sentence(self):
+        tips = self.strings()
+        self.assertGreater(len(tips), 10)
+        for t in tips:
+            self.assertLessEqual(len(t), 70, t)
+            self.assertEqual(t.rstrip(".").count(". "), 0, t)
 
 
 class Readable(unittest.TestCase):
