@@ -19,6 +19,7 @@ safetynet/guides/safety.md
 safetynet/handlers.py
 safetynet/icons/CREDITS.md
 safetynet/icons/SafetyNet_Checkpoint.svg
+safetynet/icons/SafetyNet_Macros.svg
 safetynet/icons/SafetyNet_Recover.svg
 safetynet/icons/SafetyNet_Restore.svg
 safetynet/icons/SafetyNet_Workbench.svg

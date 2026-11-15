@@ -217,7 +217,7 @@ class Rollback(_Cmd):
 
 
 class Macros(_Cmd):
-    menu, pixmap = "Macros…", "Std_DlgMacroExecute"
+    menu, pixmap = "Macros…", "SafetyNet_Macros"
     tip = "The macros in FreeCAD's macro folder: show one, approve it for Agent Link to run (you type to confirm), or take the approval back."
 
     def Activated(self):

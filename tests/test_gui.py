@@ -260,7 +260,7 @@ def run_initgui():
 
 
 # FreeCAD's own icons the commands name (resolved by FreeCAD, never copied).
-FREECAD_ICONS = {"preferences-system", "edit-undo", "Std_DlgMacroExecute"}
+FREECAD_ICONS = {"preferences-system", "edit-undo"}
 
 
 class InitGui(unittest.TestCase):

@@ -10,3 +10,4 @@ Each icon here is hand-drawn on a 64×64 canvas in FreeCAD's Artwork Guidelines 
 | SafetyNet_Checkpoint.svg | Tabler `file` + `flag` | Aluminium page with a Scarlet Red flag planted beside it |
 | SafetyNet_Restore.svg | Tabler `restore` | Scarlet Red anticlockwise arrow around an Aluminium clock |
 | SafetyNet_Recover.svg | Tabler `file` + `lifebuoy` | Aluminium page with a lifebuoy badge |
+| SafetyNet_Macros.svg | Tabler `file-code` | Aluminium script page with a Chameleon run arrow (FreeCAD has no icon named Std_DlgMacroExecute) |
