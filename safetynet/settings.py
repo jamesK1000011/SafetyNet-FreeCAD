@@ -133,3 +133,13 @@ def changed(where, name, old, new, tool=None, restart=False, applies=None, **_):
     except Exception:
         pass
     return entry
+
+
+def apply_in_place(snap):
+    """A snapshot read into the running FreeCAD's settings (the whole
+    "User parameter:" tree replaced from it) and written out at once, for a
+    rollback with nothing to restart FreeCAD around the file."""
+    import FreeCAD
+
+    FreeCAD.ParamGet("User parameter:").Import(snap)
+    FreeCAD.saveParameter()

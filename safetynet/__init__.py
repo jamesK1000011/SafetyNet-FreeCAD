@@ -12,3 +12,7 @@ and formats Agent Link kept before SafetyNet was split out of it.
 """
 
 VERSION = "0.1.0"
+
+# Set by agentlink_families._register(), which only Agent Link ever imports:
+# True when Agent Link hosts SafetyNet's Session panel (and runs its calls).
+_hosted = False

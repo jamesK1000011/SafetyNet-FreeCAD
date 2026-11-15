@@ -6,6 +6,7 @@
 # this module by convention and never names it; without Agent Link it is
 # never loaded.
 import os
+import sys
 
 from . import fam_history, fam_safety
 
@@ -36,6 +37,8 @@ def _register():
     hooks.on("setting_changed", settings.changed)
     hooks.on("reply_written", _reply_written)
     hooks.register_tab("Session", panel.make, order=90)
+    # SafetyNet's Panel command raises Agent Link's Session tab from now on.
+    sys.modules[__name__.rpartition(".")[0]]._hosted = True
 
 
 def _guides():

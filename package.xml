@@ -13,9 +13,11 @@
   <tag>autosave</tag>
   <tag>macros</tag>
   <content>
-    <other>
+    <workbench>
       <name>SafetyNet</name>
+      <classname>SafetyNetWorkbench</classname>
+      <icon>safetynet/icons/SafetyNet_Workbench.svg</icon>
       <subdirectory>./</subdirectory>
-    </other>
+    </workbench>
   </content>
 </package>

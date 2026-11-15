@@ -13,6 +13,18 @@ The work kept safe with no one at the computer:
 
 Everything is kept under `~/AgentLink` (or `$AGENTLINK_HOME`): `checkpoints/`, `autosave/`, `settings/`, `settings-log.jsonl`, `macros-approved.json`, `hidden.json`, `reopen.json`.
 
+## In the FreeCAD window
+
+The **SafetyNet** workbench, and a **Tools ▸ SafetyNet** submenu in every workbench, so recovery is reachable from whatever bench you are in:
+
+- **Checkpoint now**, **Restore checkpoint…**
+- **Recovered copies…**: the newest good copy opened beside its file; saved over it only once you type the confirm.
+- **Settings history…**, **Roll back setting…**: on its own, SafetyNet reads the snapshot into the running FreeCAD (a setting read only at start applies when FreeCAD next opens); with Agent Link, FreeCAD restarts around the file.
+- **Macros…**: show, approve (you type the confirm), take the approval back.
+- **Panel**: the Session panel. With Agent Link it is the Session tab in Agent Link's panel; without it, SafetyNet's own dock beside the model tree.
+
+Each command runs the same code an agent's tool does (`safetynet/handlers.py`), as one undo step, with no agent needed. Panels take their accent colours from FreeCAD's theme (`safetynet/theme.py`) and style only SafetyNet's own widgets.
+
 ## With Agent Link for FreeCAD
 
 When [Agent Link for FreeCAD](https://github.com/jamesK1000011/AgentLink-FreeCAD) is installed, it finds `safetynet/agentlink_families.py` and offers an agent these tools:
