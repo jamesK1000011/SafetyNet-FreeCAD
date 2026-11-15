@@ -29,6 +29,7 @@ safetynet/recovery.py
 safetynet/refusal.py
 safetynet/settings.py
 safetynet/theme.py
+safetynet/workbench.py
 tests/data/theme.cfg
 tests/test_gui.py
 tests/test_release.py

@@ -248,9 +248,14 @@ def gui_stubs(manipulators=True):
 
 
 def run_initgui():
-    ns = {"__name__": "__main__"}
+    """InitGui.py as FreeCAD runs it: its globals hold only FreeCAD,
+    FreeCADGui and the builtins, and its own names land in a separate locals
+    dict, which a class or method body cannot see (real FreeCAD's "name
+    '_ICONS' is not defined"). Returns that locals dict."""
+    fc_globals = {"__builtins__": __builtins__, "FreeCAD": sys.modules["FreeCAD"], "FreeCADGui": sys.modules["FreeCADGui"]}
+    ns = {}
     with open(os.path.join(ROOT, "InitGui.py"), encoding="utf-8") as f:
-        exec(compile(f.read(), "InitGui.py", "exec"), ns)
+        exec(compile(f.read(), "InitGui.py", "exec"), fc_globals, ns)
     return ns
 
 
@@ -283,6 +288,10 @@ class InitGui(unittest.TestCase):
             entries = m.modifyMenuBar()
             self.assertIn({"append": "SafetyNet_Menu", "menuItem": "&Tools"}, entries)
             wb.Initialize()
+            wb.Activated()
+            wb.Deactivated()
+            self.assertEqual(wb.GetClassName(), "Gui::PythonWorkbench")
+            self.assertEqual(os.path.basename(wb.Icon), "SafetyNet_Workbench.svg")
             self.assertEqual(reg["toolbars"], [("SafetyNet", commands.TOOLBAR)])
             self.assertEqual(reg["menus"], [("SafetyNet", commands.NAMES)])
             self.assertEqual(len(reg["commands"]), len(commands.NAMES) + 1, "registered once")
