@@ -1,7 +1,10 @@
 Init.py
 InitGui.py
 LICENSE
+LICENSES/Apache-2.0.txt
+LICENSES/MIT.txt
 README.md
+REUSE.toml
 package.xml
 safetynet/__init__.py
 safetynet/agentlink_families.py
@@ -11,6 +14,11 @@ safetynet/fam_history.py
 safetynet/fam_safety.py
 safetynet/files.py
 safetynet/guides/safety.md
+safetynet/icons/CREDITS.md
+safetynet/icons/SafetyNet_Checkpoint.svg
+safetynet/icons/SafetyNet_Recover.svg
+safetynet/icons/SafetyNet_Restore.svg
+safetynet/icons/SafetyNet_Workbench.svg
 safetynet/macros.py
 safetynet/panel.py
 safetynet/recovery.py

@@ -32,3 +32,7 @@ SafetyNet's own modules never import Agent Link; only `agentlink_families.py` an
 ## Licence
 
 LGPL-2.1-or-later (`LICENSE`). Split out of Agent Link for FreeCAD, under the same licence.
+
+## Icons
+
+Icons adapted from Tabler Icons (MIT, tabler.io) and Pictogrammers Material Design Icons (Apache-2.0, pictogrammers.com). FreeCAD's own icons are used by name from FreeCAD. See `safetynet/icons/CREDITS.md`.

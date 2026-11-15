@@ -8,6 +8,7 @@
   <license file="LICENSE">LGPL-2.1-or-later</license>
   <url type="repository" branch="main">https://github.com/jamesK1000011/SafetyNet-FreeCAD</url>
   <freecadmin>1.0.0</freecadmin>
+  <icon>safetynet/icons/SafetyNet_Workbench.svg</icon>
   <tag>recovery</tag>
   <tag>autosave</tag>
   <tag>macros</tag>
