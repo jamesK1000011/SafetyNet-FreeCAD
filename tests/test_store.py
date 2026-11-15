@@ -1,0 +1,199 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+# SafetyNet's own modules without FreeCAD or Agent Link: what is kept, what
+# is due, what is found; and that they import nothing of Agent Link.
+import os
+import subprocess
+import sys
+import tempfile
+import time
+import unittest
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
+sys.path.insert(0, ROOT)
+
+from safetynet import autosave, checkpoints, files, macros, recovery, settings  # noqa: E402
+
+
+class Home(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self._was = os.environ.get("AGENTLINK_HOME")
+        os.environ["AGENTLINK_HOME"] = self.tmp.name
+
+    def tearDown(self):
+        if self._was is None:
+            os.environ.pop("AGENTLINK_HOME", None)
+        else:
+            os.environ["AGENTLINK_HOME"] = self._was
+        self.tmp.cleanup()
+
+
+class Checkpoints(Home):
+    def test_cap(self):
+        self.assertEqual(checkpoints.cap_bytes(10 * 1024 ** 3), 500 * files.MB)
+        self.assertEqual(checkpoints.cap_bytes(100 * 1024 ** 3), int(0.02 * 100 * 1024 ** 3))
+        self.assertEqual(checkpoints.cap_bytes(100 * 1024 ** 3, 50), 50 * files.MB)
+
+    def test_prune_keeps_named_and_last_ten(self):
+        es = [{"n": i, "name": "datum" if i == 1 else None, "bytes": 1} for i in range(1, 16)]
+        kept, dropped = checkpoints.cp_prune(es, cap=10 ** 9)
+        self.assertEqual([e["n"] for e in kept], [1] + list(range(6, 16)))
+        self.assertEqual(len(dropped), 4)
+        # over the cap: the oldest unnamed go, the named one and the newest stay
+        kept, _ = checkpoints.cp_prune(es, cap=3)
+        self.assertIn(1, [e["n"] for e in kept])
+        self.assertIn(15, [e["n"] for e in kept])
+        self.assertLessEqual(sum(e["bytes"] for e in kept), 3)
+
+    def test_automatic_ones_do_not_pile_up(self):
+        es = [{"n": i, "name": f"before macro {i}", "auto": True, "bytes": 1} for i in range(1, 30)]
+        kept, dropped = checkpoints.cp_prune(es, cap=10 ** 9)
+        self.assertEqual(len(kept), checkpoints.KEEP_UNNAMED)
+        self.assertEqual(len(dropped), 29 - checkpoints.KEEP_UNNAMED)
+
+    def test_add_find_and_files(self):
+        e = checkpoints.cp_new("My Doc/1", name="before fillet", step=4, undo=3, tx=7)
+        os.makedirs(os.path.dirname(e["file"]), exist_ok=True)
+        open(e["file"], "wb").write(b"x" * 10)
+        checkpoints.cp_add("My Doc/1", e, cap=10 ** 9)
+        self.assertEqual(checkpoints.cp_find("My Doc/1", "before fillet")["id"], "cp1")
+        self.assertEqual(checkpoints.cp_find("My Doc/1", "cp1")["bytes"], 10)
+        self.assertIn("My_Doc_1", e["file"])
+        for i in range(12):
+            x = checkpoints.cp_new("My Doc/1", step=i)
+            open(x["file"], "wb").write(b"y")
+            checkpoints.cp_add("My Doc/1", x, cap=10 ** 9)
+        names = [x["id"] for x in checkpoints.cp_index("My Doc/1")]
+        self.assertEqual(len(names), 11)
+        self.assertIn("cp1", names)
+        self.assertEqual(len([f for f in os.listdir(checkpoints.cp_dir("My Doc/1")) if f.endswith(".FCStd")]), 11)
+
+    def test_undo_reach(self):
+        e = {"tx": 5, "undo": 5}
+        self.assertTrue(checkpoints.can_undo_back(e, 8, 8))
+        self.assertFalse(checkpoints.can_undo_back(e, 30, 20))  # fell off the 20-step stack
+        self.assertFalse(checkpoints.can_undo_back(e, 8, 6))  # something else moved the stack
+        self.assertTrue(checkpoints.can_undo_back(e, 5, 0))
+
+
+class AutoSave(Home):
+    def test_due(self):
+        now = time.time()
+        self.assertFalse(autosave.autosave_due(now - 10, 0, now, 3))
+        self.assertTrue(autosave.autosave_due(now - 400, 0, now, 1))
+        self.assertTrue(autosave.autosave_due(now - 10, 0, now, 10))
+        self.assertFalse(autosave.autosave_due(now - 400, 5, now, 5))  # nothing changed
+
+    def test_prune_and_recovery_order(self):
+        d = autosave.autosave_dir("Doc")
+        os.makedirs(d)
+        for i in range(7):
+            p = os.path.join(d, f"2026111{i}-000000.FCStd")
+            open(p, "w").write("x")
+            os.utime(p, (1000 + i, 1000 + i))
+        self.assertEqual(len(autosave.autosave_prune("Doc")), 2)
+        fc = os.path.join(self.tmp.name, "fc.fcstd")
+        open(fc, "w").write("x")
+        src = recovery.recovery_sources("Doc", [(fc, 5000)])
+        self.assertEqual(src[0]["source"], "freecad")
+        self.assertEqual(len(src), 6)
+
+    def test_freecad_recovery_scan(self):
+        root = os.path.join(self.tmp.name, "cache")
+        d = os.path.join(root, "FreeCAD_Doc_x_1")
+        os.makedirs(d)
+        open(os.path.join(d, "fc_recovery_file.fcstd"), "w").write("x")
+        open(os.path.join(d, "fc_recovery_file.xml"), "w").write("<AutoRecovery><Label>Bracket</Label></AutoRecovery>")
+        self.assertEqual(recovery.freecad_recovery_files([root], "Bracket")[0][2], "Bracket")
+        self.assertEqual(recovery.freecad_recovery_files([root], "Other"), [])
+
+    def test_saving_flag(self):
+        self.assertFalse(autosave.saving())
+        autosave.set_saving(True)
+        self.assertTrue(autosave.saving())
+        autosave.set_saving(False)
+        self.assertFalse(autosave.saving())
+
+
+
+
+class Settings(Home):
+    def test_snapshot_log_rollback(self):
+        cfg = os.path.join(self.tmp.name, "user.cfg")
+        open(cfg, "w").write("<cfg>1</cfg>")
+        snap = settings.settings_snapshot(cfg)
+        settings.settings_log({"tool": "pref_set", "path": "View", "name": "Gradient", "from": True, "to": False, "snapshot": snap})
+        h = settings.settings_history()
+        self.assertEqual(h[0]["change"], 1)
+        self.assertEqual(settings.settings_snapshot_for(1), snap)
+        self.assertEqual(open(settings.settings_snapshot_for(os.path.basename(snap)[:8])).read(), "<cfg>1</cfg>")
+        for _ in range(25):
+            settings.settings_snapshot(cfg)
+        self.assertEqual(len(os.listdir(os.path.join(self.tmp.name, "settings"))), settings.SETTINGS_KEEP)
+
+
+class Macros(Home):
+    def test_text_names_the_sizes(self):
+        calls = [{"tool": "pd_pad", "args": {"sketch": "S", "length": 60}}, {"tool": "pd_thickness", "args": {"thickness": 2.0, "faces": ["top"]}}]
+        t = macros.macro_text("Box", calls, {"wall": 2.0, "length": 60}, ["makes a box"])
+        self.assertIn("WALL = 2.0", t)
+        self.assertIn("'length': LENGTH", t)
+        self.assertIn("'thickness': WALL", t)
+        consts, cs = macros.macro_calls(t)
+        self.assertEqual(consts, {"WALL": 2.0, "LENGTH": 60})
+        self.assertEqual(len(cs), 2)
+        compile(t, "m", "exec")
+
+    def test_approval_follows_the_code(self):
+        p = os.path.join(self.tmp.name, "Box.FCMacro")
+        open(p, "w").write("x = 1\n")
+        self.assertEqual(macros.approval_state("Box", p), "no")
+        macros.approve("Box", p)
+        self.assertEqual(macros.approval_state("Box", p), "approved")
+        open(p, "w").write("x = 2\n")
+        self.assertEqual(macros.approval_state("Box", p), "changed")
+        macros.unapprove("Box")
+        self.assertEqual(macros.approval_state("Box", p), "no")
+
+    def test_names(self):
+        self.assertTrue(macros.macro_name_ok("Bracket v2"))
+        self.assertFalse(macros.macro_name_ok("../evil"))
+
+
+class Reopen(Home):
+    def test_taken_once_and_stale_dropped(self):
+        files._save(recovery.reopen_file(), {"t": time.time(), "docs": [{"name": "A", "copy": "/x"}]})
+        self.assertEqual([c["name"] for c in recovery.reopen_pending()], ["A"])
+        self.assertEqual(recovery.reopen_pending(), [])
+        files._save(recovery.reopen_file(), {"t": time.time() - 3600, "docs": [{"name": "A"}]})
+        self.assertEqual(recovery.reopen_pending(), [])
+
+
+class SettingsEvents(Home):
+    def test_changed_logs_with_the_snapshot_taken_before(self):
+        settings._pending.update({"snapshot": "/snap.cfg", "tool": "pref_set", "t": time.time()})
+        e = settings.changed("View", "Gradient", True, False, tool="pref_set", restart=False)
+        self.assertEqual(e["snapshot"], "/snap.cfg")
+        row = settings.history_rows(1)[0]
+        self.assertEqual((row["change"], row["tool"], row["name"], row["to"]), (1, "pref_set", "Gradient", False))
+
+
+class NoAgent(unittest.TestCase):
+    def test_modules_import_nothing_of_agent_link(self):
+        code = ("import sys; sys.path.insert(0, %r); import safetynet, safetynet.files, safetynet.checkpoints, safetynet.autosave, "
+                "safetynet.recovery, safetynet.settings, safetynet.macros, safetynet.refusal; "
+                "print(sorted(m for m in sys.modules if m.startswith('agentlink')))") % ROOT
+        out = subprocess.run([sys.executable, "-I", "-c", code], capture_output=True, text=True, check=True).stdout.strip()
+        self.assertEqual(out, "[]")
+
+    def test_helpers_match_agent_link_where_it_is_beside(self):
+        try:
+            from agentlink import keep
+        except ImportError:
+            self.skipTest("Agent Link is not beside it")
+        self.assertEqual(files.home(), keep.home())
+
+
+if __name__ == "__main__":
+    unittest.main()

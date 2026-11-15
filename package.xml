@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<package format="1" xmlns="https://wiki.freecad.org/Package_Metadata">
+  <name>SafetyNet</name>
+  <description>The work kept safe with no one at the computer: checkpoints as saved copies of a document, auto-save copies, documents back after a crash or a hang, FreeCAD's settings logged and rolled back, and macros that run only once the person approved them. Plain FreeCAD; tools for agents through Agent Link for FreeCAD when it is installed. Not affiliated with or endorsed by the FreeCAD project or the FPA.</description>
+  <version>0.1.0</version>
+  <date>2026-11-14</date>
+  <maintainer email="jamesK1000011@users.noreply.github.com">jamesK1000011</maintainer>
+  <license file="LICENSE">LGPL-2.1-or-later</license>
+  <url type="repository" branch="main">https://github.com/jamesK1000011/SafetyNet-FreeCAD</url>
+  <freecadmin>1.0.0</freecadmin>
+  <tag>recovery</tag>
+  <tag>autosave</tag>
+  <tag>macros</tag>
+  <content>
+    <other>
+      <name>SafetyNet</name>
+      <subdirectory>./</subdirectory>
+    </other>
+  </content>
+</package>
