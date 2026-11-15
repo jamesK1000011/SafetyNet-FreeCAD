@@ -42,5 +42,30 @@ class Setting(unittest.TestCase):
         self.assertIs(layout.placer(), layout.own())
 
 
+class SessionPanel(unittest.TestCase):
+    """With Agent Link's placer (service panel_layout) the Session panel is
+    SafetyNet's own dock, not a tab of Agent Link's panel."""
+
+    def test_own_dock_when_agent_link_places_panels(self):
+        try:
+            from agentlink import hooks
+        except ImportError:
+            self.skipTest("Agent Link is not on the path")
+        from safetynet import agentlink_families as fam
+
+        state = hooks.saved()
+        try:
+            hooks.reset()
+            hooks.provide(layout.SERVICE, object())
+            fam._register()
+            self.assertNotIn("Session", [t["title"] for t in hooks.TABS])
+            self.assertIsNotNone(hooks.service("checkpoints"))
+            hooks.reset()
+            fam._register()  # an Agent Link that cannot place a dock: the tab
+            self.assertIn("Session", [t["title"] for t in hooks.TABS])
+        finally:
+            hooks.restore(state)
+
+
 if __name__ == "__main__":
     unittest.main()

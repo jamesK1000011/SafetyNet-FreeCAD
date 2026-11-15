@@ -351,7 +351,7 @@ def show():
 
     _, QtWidgets = _qt()
     mw = _main()
-    if getattr(safetynet, "_hosted", False):
+    if getattr(safetynet, "_hosted", False) and layout.in_agentlink_panel("Session"):
         try:
             importlib.import_module("agentlink.panel").show(tab="Session")
             return "hosted"
@@ -364,7 +364,10 @@ def show():
 
         dock = QtWidgets.QDockWidget("SafetyNet", mw)
         dock.setObjectName(DOCK)
-        dock.setWidget(widget(local.run, hosted=False))
+        # Under Agent Link its clicks run through it (shown and logged as
+        # the agent's are) and the rows that need it show; alone, local.
+        c = layout.caller() if getattr(safetynet, "_hosted", False) else None
+        dock.setWidget(widget(c._call, hosted=True) if c is not None else widget(local.run, hosted=False))
     content = getattr(dock, "_content", None) or dock.widget()
     dock._content = content  # kept: in the Combo View or the slide-out it is not the dock's
     p = layout.placer()

@@ -24,6 +24,15 @@ def _warn(text):
         pass
 
 
+def _log(text):
+    try:
+        import FreeCAD
+
+        FreeCAD.Console.PrintLog(text)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _start():
     try:
         from . import recovery
@@ -50,7 +59,14 @@ def make_class(Gui):
             self.appendMenu("SafetyNet", commands.NAMES)
 
         def Activated(self):
-            pass
+            # Its panel with it: beside Model and Tasks (the panel layout
+            # setting), in front the first time.
+            try:
+                from . import panel
+
+                panel.show()
+            except Exception as e:  # noqa: BLE001 — never stop the bench (no window in tests)
+                _log(f"SafetyNet: panel not shown ({e})\n")
 
         def Deactivated(self):
             pass
