@@ -192,7 +192,8 @@ def widget(runner, hosted=False):
             except Exception:
                 pass
             lay.addWidget(self.tree, 1)
-            row = QtWidgets.QHBoxLayout()
+            # Two by two: four in a row were cut off in a narrow dock.
+            row = QtWidgets.QGridLayout()
             self.buttons = {}
             for label, tip, fn in (("Use Copy", "Save the picked copy over its file.", self.accept),
                                    ("Roll Back", "Undo the picked settings change.", self.rollback),
@@ -201,7 +202,7 @@ def widget(runner, hosted=False):
                 b = QtWidgets.QPushButton(label)
                 b.setToolTip(tip)
                 b.clicked.connect(fn)
-                row.addWidget(b)
+                row.addWidget(b, len(self.buttons) // 2, len(self.buttons) % 2)
                 self.buttons[label] = b
             if not hosted:
                 # A saved macro runs its calls through Agent Link.
