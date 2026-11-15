@@ -333,6 +333,71 @@ class SessionWidget(unittest.TestCase):
             self.assertIn(("setVisible", (True,)), row.calls)
         self.assertEqual(asked[0], "doc_switch")
 
+    def test_group_titles_span_the_row(self):
+        w, _ = self.build(False)
+        tops = [c[1][0] for c in w.tree.calls if c[0] == "addTopLevelItem"]
+        self.assertEqual(len(tops), 3)
+        for top in tops:
+            self.assertIn(("setFirstColumnSpanned", (True,)), top.calls)
+        self.assertIn(("setWordWrap", (True,)), w.tree.calls)
+
+
+class Readable(unittest.TestCase):
+    """What the Session panel and the menus show a person."""
+
+    def setUp(self):
+        from safetynet import panel
+
+        self.P = panel
+
+    def test_one_date_format(self):
+        import datetime
+
+        now = datetime.datetime(2026, 11, 15, 13, 0)
+        when = self.P.when
+        self.assertEqual(when("2026-11-15 12:41", now), "15 Nov 12:41")
+        self.assertEqual(when("20261115-124100", now), "15 Nov 12:41")
+        self.assertEqual(when("20251231-090000", now), "31 Dec 2025 09:00")
+        self.assertEqual(when("", now), "")
+        self.assertEqual(when("soon", now), "soon")
+
+    def test_settings_changes_in_words(self):
+        ct = self.P.change_text
+        self.assertEqual(ct({"tool": "safetynet", "path": "BaseApp/Preferences/Document", "name": "AutoSaveEnabled", "from": False, "to": True}),
+                         "Document › Auto save enabled: off → on")
+        self.assertEqual(ct({"path": "BaseApp/Preferences/Units", "name": "Decimals", "from": 2, "to": 3, "restart": True}),
+                         "Units › Decimals: 2 → 3 (restart)")
+        self.assertEqual(ct({"path": "", "name": "before update"}), "Settings snapshot before update")
+        self.assertEqual(ct({}), "Settings snapshot")
+        self.assertEqual(ct({"tool": "pref_rollback", "to": "4"}), "Settings rolled back to before change 4")
+        self.assertEqual(ct({"tool": "pref_rollback", "to": "20261115-124100"})[:30], "Settings rolled back to 15 Nov")
+        self.assertEqual(ct({"path": "BaseApp/Preferences", "name": "pack Dark", "from": None, "to": "12 values"}), "Pack Dark: 12 values")
+        for c in ({"path": "", "name": "before update"}, {"tool": "pref_rollback", "to": "4"}):
+            self.assertNotIn("None", ct(c))
+        self.assertEqual(self.P.words("UseVBO"), "Use VBO")
+
+    def test_message_boxes_carry_the_title(self):
+        made = []
+
+        class Box:
+            Information, Warning, Question, Yes, No = 1, 2, 3, 4, 8
+
+            def __init__(self, parent):
+                self.calls = []
+                made.append(self)
+
+            def __getattr__(self, n):
+                return lambda *a: self.calls.append((n, a)) or 0
+
+        qt = types.SimpleNamespace(QMessageBox=Box)
+        for platform, want in (("darwin", [("setText", ("SafetyNet",)), ("setInformativeText", ("Hello.",))]), ("linux", [("setText", ("Hello.",))])):
+            with mock.patch.object(sys, "platform", platform):
+                self.P.message(qt, None, "Hello.")
+            calls = made[-1].calls
+            self.assertIn(("setWindowTitle", ("SafetyNet",)), calls)
+            for c in want:
+                self.assertIn(c, calls)
+
 
 class NoAgentLink(unittest.TestCase):
     def test_plain_modules_import_nothing_of_agent_link(self):

@@ -27,6 +27,93 @@ def _qt():
 
 
 NAME = "SafetyNetSession"
+TITLE = "SafetyNet"
+
+
+# ---- what a person reads: one date format, settings in words ---------------------------
+
+_STAMPS = ("%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S", "%Y%m%d-%H%M%S")
+
+
+def when(text, now=None):
+    """A time as SafetyNet's tools give it (2026-11-15 12:41 or
+    20261115-124100) in one readable local form: 15 Nov 12:41, with the
+    year when it is not this one. Text it cannot read comes back as is."""
+    import datetime
+
+    t = str(text or "").strip()
+    for f in _STAMPS:
+        try:
+            d = datetime.datetime.strptime(t, f)
+        except ValueError:
+            continue
+        year = (now or datetime.datetime.now()).year
+        return f"{d.day} {d:%b}" + (f" {d.year}" if d.year != year else "") + f" {d:%H:%M}"
+    return t
+
+
+def words(name):
+    """A parameter's name in words: AutoSaveEnabled -> Auto save enabled."""
+    n = str(name or "")
+    if " " not in n:
+        out = ""
+        for i, c in enumerate(n):
+            if c.isupper() and i and (n[i - 1].islower() or (i + 1 < len(n) and n[i + 1].islower())):
+                out += " "
+            out += c
+        n = out.replace("_", " ")
+        n = " ".join(w if w.isupper() and len(w) > 1 else w.lower() for w in n.split())
+    return n[:1].upper() + n[1:]
+
+
+def value_text(v):
+    if v is None:
+        return "not set"
+    if isinstance(v, bool):
+        return "on" if v else "off"
+    t = str(v)
+    return t if len(t) <= 40 else t[:39] + "…"
+
+
+def change_text(c):
+    """One settings-log entry as a person reads it: the setting's group and
+    name in words with its real before and after; a rollback or a snapshot
+    with nothing changed said as such, never "None → None"."""
+    to, frm, name = c.get("to"), c.get("from"), c.get("name")
+    if c.get("tool") == "pref_rollback":
+        ref = str(to or "")
+        text = f"Settings rolled back to before change {ref}" if ref.isdigit() else f"Settings rolled back to {when(ref)}"
+    elif frm is None and to is None:
+        text = "Settings snapshot" + (f" {name}" if name and " " in str(name) else f": {words(name)}" if name else "")
+    else:
+        group = str(c.get("path") or "").rstrip("/").split("/")[-1]
+        label = words(name) if name else "Settings"
+        if group and group not in ("Preferences", "BaseApp"):
+            label = f"{words(group)} › {label}"
+        text = f"{label}: {value_text(to)}" if frm is None else f"{label}: {value_text(frm)} → {value_text(to)}"
+    return text + (" (restart)" if c.get("restart") else "")
+
+
+def message(QtWidgets, parent, text, kind="information", title=TITLE):
+    """A message box with SafetyNet's title. macOS shows no window title on
+    a message box, so there the title is the bold first line and the text
+    goes under it."""
+    import sys
+
+    icons = {"information": "Information", "warning": "Warning", "question": "Question"}
+    box = QtWidgets.QMessageBox(parent)
+    box.setIcon(getattr(QtWidgets.QMessageBox, icons.get(kind, "Information")))
+    box.setWindowTitle(title)
+    if sys.platform == "darwin":
+        box.setText(title)
+        box.setInformativeText(text)
+    else:
+        box.setText(text)
+    if kind == "question":
+        box.setStandardButtons(QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
+        box.setDefaultButton(QtWidgets.QMessageBox.No)
+    run = getattr(box, "exec", None) or box.exec_
+    return run()
 
 
 def qss(r):
@@ -61,7 +148,7 @@ def widget(runner, hosted=False):
             self.pinned = QtWidgets.QLabel("")
             self.pinned.setObjectName("SafetyNetPinned")
             self.pinned.setWordWrap(True)
-            self.pinned.setToolTip("The document the agent works in, whatever is in front")
+            self.pinned.setToolTip("The document the agent works in, whatever is in front.")
             lay.addWidget(self.pinned)
             held = QtWidgets.QHBoxLayout()
             self.held = QtWidgets.QLabel("")
@@ -70,7 +157,7 @@ def widget(runner, hosted=False):
             held.addWidget(self.held, 1)
             self.go = QtWidgets.QPushButton("Go")
             self.go.setObjectName("SafetyNetGo")
-            self.go.setToolTip("Run the heavy jobs held while you worked")
+            self.go.setToolTip("Run the heavy jobs held while you worked.")
             self.go.clicked.connect(lambda: self.do("queue_go", {}))
             held.addWidget(self.go)
             lay.addLayout(held)
@@ -80,13 +167,25 @@ def widget(runner, hosted=False):
             self.tree = QtWidgets.QTreeWidget()
             self.tree.setHeaderLabels(["", "When", "What"])
             self.tree.setRootIsDecorated(True)
+            self.tree.setWordWrap(True)
+            try:
+                # Group titles span the row; When fits its dates; What takes
+                # the rest. No fixed widths to clip them.
+                head = self.tree.header()
+                fit = QtWidgets.QHeaderView.ResizeToContents
+                head.setSectionResizeMode(0, fit)
+                head.setSectionResizeMode(1, fit)
+                head.setSectionResizeMode(2, QtWidgets.QHeaderView.Stretch)
+                head.setStretchLastSection(True)
+            except Exception:
+                pass
             lay.addWidget(self.tree, 1)
             row = QtWidgets.QHBoxLayout()
             self.buttons = {}
-            for label, tip, fn in (("Use copy", "Save the recovered copy picked above over its file (you type to confirm)", self.accept),
-                                   ("Roll back", "Put FreeCAD's settings back as they were before the change picked above", self.rollback),
-                                   ("Approve", "Let Agent Link run the macro picked above (you type to confirm)", self.approve),
-                                   ("Run", "Run the approved macro picked above", self.run)):
+            for label, tip, fn in (("Use Copy", "Save the recovered copy picked above over its file (you type to confirm).", self.accept),
+                                   ("Roll Back", "Put FreeCAD's settings back as they were before the change picked above.", self.rollback),
+                                   ("Approve", "Let Agent Link run the macro picked above (you type to confirm).", self.approve),
+                                   ("Run", "Run the approved macro picked above.", self.run)):
                 b = QtWidgets.QPushButton(label)
                 b.setToolTip(tip)
                 b.clicked.connect(fn)
@@ -95,7 +194,7 @@ def widget(runner, hosted=False):
             if not hosted:
                 # A saved macro runs its calls through Agent Link.
                 self.buttons["Run"].setEnabled(False)
-                self.buttons["Run"].setToolTip("Running a macro of the agent's calls needs Agent Link for FreeCAD")
+                self.buttons["Run"].setToolTip("Running a macro of the agent's calls needs Agent Link for FreeCAD.")
             lay.addLayout(row)
             self.roles = theme.roles(self)
             theme.follow(self, self._styled)
@@ -104,13 +203,13 @@ def widget(runner, hosted=False):
             self.roles = r
             return qss(r)
 
-        def say(self, text):
-            QtWidgets.QMessageBox.information(self, "SafetyNet", text)
+        def say(self, text, kind="information"):
+            message(QtWidgets, self, text, kind)
 
         def do(self, tool, args):
             ok, r = runner(tool, args)
             if not ok:
-                self.say((r.get("error") or {}).get("message", str(r)))
+                self.say((r.get("error") or {}).get("message", str(r)), "warning")
             self.fill()
             return ok, r
 
@@ -130,21 +229,23 @@ def widget(runner, hosted=False):
                 top.setForeground(0, QtGui.QBrush(QtGui.QColor(self.roles["accent"])))
                 for r in rows:
                     it = QtWidgets.QTreeWidgetItem(["", str(r[0]), str(r[1])])
+                    it.setToolTip(2, str(r[1]))
                     it.setData(0, QtCore.Qt.UserRole, json.dumps({"kind": kind, **r[2]}))
                     it.setForeground(1, QtGui.QBrush(QtGui.QColor(self.roles[STATE.get(r[0], "muted") if kind == "macro" else "muted"])))
                     top.addChild(it)
                 self.tree.addTopLevelItem(top)
+                top.setFirstColumnSpanned(True)
                 top.setExpanded(bool(rows))
 
             ok, rec = runner("app_recover", {"action": "list"})
             rows = []
             for docrow in (rec.get("documents") or []) if ok else []:
                 for c in (docrow.get("copies") or [])[:5]:
-                    rows.append((c.get("time", ""), f"{docrow.get('label')}: {c.get('source', '')}",
+                    rows.append((when(c.get("time", "")), f"{docrow.get('label')}: {c.get('source', '')}",
                                  {"document": docrow.get("document"), "label": docrow.get("label")}))
             section("Recovered copies", rows, "recover")
             ok, ph = runner("pref_history", {"limit": 10})
-            section("Settings changes", [(c.get("time", ""), f"{c.get('path', '')}/{c.get('name', '')}: {c.get('from')} → {c.get('to')}", {"to": c.get("change")})
+            section("Settings changes", [(when(c.get("time", "")), change_text(c), {"to": c.get("change")})
                                          for c in (ph.get("changes") or [])] if ok else [], "pref")
             ok, ml = runner("macro_list", {})
             section("Macros", [(m.get("state", ""), m.get("name"), {"name": m.get("name")})
@@ -172,7 +273,7 @@ def widget(runner, hosted=False):
                     if not rec.get("file"):
                         self.say(f"{rec['as']} is open; it was never saved to a file — save it where you like.")
                         return
-                    typed = self.typed("Use the recovered copy", f"save over {os.path.basename(rec['file'])}")
+                    typed = self.typed("Use Recovered Copy", f"save over {os.path.basename(rec['file'])}")
                     if typed:
                         self.do("app_recover", {"action": "accept", "document": rec["document"], "confirm": typed})
 
@@ -184,7 +285,7 @@ def widget(runner, hosted=False):
         def approve(self):
             d = self.pick("macro")
             if d:
-                typed = self.typed("Approve the macro", f"approve {d['name']}")
+                typed = self.typed("Approve Macro", f"approve {d['name']}")
                 if typed:
                     self.do("macro_approve", {"name": d["name"], "confirm": typed})
 

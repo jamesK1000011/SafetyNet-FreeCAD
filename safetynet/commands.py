@@ -10,6 +10,7 @@ import FreeCAD
 import FreeCADGui
 
 from . import local
+from .panel import when
 
 ICONS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icons")
 
@@ -35,8 +36,9 @@ def _mw():
 def say(text, error=False):
     (FreeCAD.Console.PrintError if error else FreeCAD.Console.PrintMessage)(f"SafetyNet: {text}\n")
     try:
-        QtWidgets = _qt()
-        (QtWidgets.QMessageBox.warning if error else QtWidgets.QMessageBox.information)(_mw(), "SafetyNet", text)
+        from .panel import message
+
+        message(_qt(), _mw(), text, "warning" if error else "information")
     except Exception:
         pass
 
@@ -128,12 +130,12 @@ class Restore(_Cmd):
         r = call("history_checkpoint", {"list": True})
         if r is None:
             return
-        rows = [(f"{c['checkpoint']}{' · ' + c['name'] if c.get('name') else ''} · {c.get('time', '')}{' · auto' if c.get('auto') else ''}", c["checkpoint"])
+        rows = [(f"{c['checkpoint']}{' · ' + c['name'] if c.get('name') else ''} · {when(c.get('time', ''))}{' · auto' if c.get('auto') else ''}", c["checkpoint"])
                 for c in reversed(r.get("checkpoints") or [])]
         if not rows:
             say(f"{r.get('document')} has no checkpoints yet: Checkpoint Now takes one.")
             return
-        cp = pick("Restore checkpoint", f"Back to which checkpoint of {r.get('document')}?", rows)
+        cp = pick("Restore Checkpoint", f"Back to which checkpoint of {r.get('document')}?", rows)
         if cp:
             out = call("history_restore", {"checkpoint": cp})
             if out:
@@ -152,11 +154,11 @@ class Recover(_Cmd):
         rows = []
         for d in docs:
             newest = (d.get("copies") or [{}])[0]
-            rows.append((f"{d.get('label')} · {len(d.get('copies') or [])} copies · newest {newest.get('source', '')} {newest.get('time', '')}", d))
+            rows.append((f"{d.get('label')} · {len(d.get('copies') or [])} copies · newest {newest.get('source', '')} {when(newest.get('time', ''))}", d))
         if not rows:
             say("No saved copies of any document here.")
             return
-        d = pick("Recovered copies", "Open the newest good copy of which document (beside its file)?", rows)
+        d = pick("Recovered Copies", "Open the newest good copy of which document (beside its file)?", rows)
         if not d:
             return
         out = call("app_recover", {"action": "auto", "documents": [{"name": d["document"], "label": d.get("label")}]})
@@ -170,7 +172,7 @@ class Recover(_Cmd):
             say(f"{rec.get('as')} is open; it was never saved to a file — save it where you like.")
             return
         want = f"save over {os.path.basename(rec['file'])}"
-        t = typed("Use the recovered copy", want, f"{rec.get('as')} is open beside your file. To make it the file (the old one is kept):")
+        t = typed("Use Recovered Copy", want, f"{rec.get('as')} is open beside your file. To make it the file (the old one is kept):")
         if t:
             done = call("app_recover", {"action": "accept", "document": rec["document"], "confirm": t})
             if done:
@@ -183,7 +185,9 @@ def _changes(limit=20):
 
 
 def _change_text(c):
-    return f"#{c['change']} · {c.get('time', '')} · {c.get('path', '')}/{c.get('name', '')}: {c.get('from')} → {c.get('to')}{' (restart)' if c.get('restart') else ''}"
+    from .panel import change_text
+
+    return f"#{c['change']} · {when(c.get('time', ''))} · {change_text(c)}"
 
 
 class SettingsHistory(_Cmd):
@@ -192,7 +196,7 @@ class SettingsHistory(_Cmd):
 
     def Activated(self):
         rows = _changes(50)
-        show_text("Settings history", "\n".join(_change_text(c) for c in rows) if rows else "No settings changes logged.")
+        show_text("Settings History", "\n".join(_change_text(c) for c in rows) if rows else "No settings changes logged.")
 
 
 class Rollback(_Cmd):
@@ -204,11 +208,13 @@ class Rollback(_Cmd):
         if not rows:
             say("No settings changes logged to roll back.")
             return
-        ch = pick("Roll back setting", "Put the settings back as they were before which change?", [(_change_text(c), c["change"]) for c in rows])
+        ch = pick("Roll Back Setting", "Put the settings back as they were before which change?", [(_change_text(c), c["change"]) for c in rows])
         if ch is None:
             return
+        from .panel import message
+
         QtWidgets = _qt()
-        sure = QtWidgets.QMessageBox.question(_mw(), "Roll back setting", f"Put all of FreeCAD's settings back as they were before change #{ch}? The settings now are snapshotted first.")
+        sure = message(QtWidgets, _mw(), f"Put all of FreeCAD's settings back as they were before change #{ch}? The settings now are snapshotted first.", "question", "Roll Back Setting")
         if sure != QtWidgets.QMessageBox.Yes:
             return
         out = call("pref_rollback", {"to": ch})
@@ -240,7 +246,7 @@ class Macros(_Cmd):
             m = call("macro_show", {"name": name})
             if m:
                 show_text(f"{name} · read before approving", m.get("text", ""))
-                t = typed("Approve the macro", f"approve {name}", "A macro is Python that runs with the computer's full reach.")
+                t = typed("Approve Macro", f"approve {name}", "A macro is Python that runs with the computer's full reach.")
                 if t:
                     if call("macro_approve", {"name": name, "confirm": t}):
                         say(f"{name} approved: it runs until its file changes.")
