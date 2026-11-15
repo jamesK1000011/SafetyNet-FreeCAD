@@ -365,7 +365,7 @@ def show():
         dock = QtWidgets.QDockWidget("SafetyNet", mw)
         dock.setObjectName(DOCK)
         dock.setWidget(widget(local.run, hosted=False))
-    content = dock.widget() or getattr(dock, "_content", None)
+    content = getattr(dock, "_content", None) or dock.widget()
     dock._content = content  # kept: in the Combo View or the slide-out it is not the dock's
     p = layout.placer()
     p.show(DOCK, dock, layout.active_workbench() or WORKBENCH, "SafetyNet")
