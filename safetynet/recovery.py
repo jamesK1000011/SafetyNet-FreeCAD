@@ -62,6 +62,27 @@ def from_copy_folder(file):
     return TMP_PREFIX in os.path.basename(os.path.dirname(str(file or "")))
 
 
+def _changed(d):
+    """Changes since the copy was saved: the window's own modified mark when
+    there is one (FreeCAD 1.1 reports a document touched as soon as it is
+    opened), else touched."""
+    try:
+        import FreeCAD
+
+        if getattr(FreeCAD, "GuiUp", False):
+            import FreeCADGui
+
+            g = FreeCADGui.getDocument(d.Name)
+            if g is not None:
+                return bool(g.Modified)
+    except Exception:
+        pass
+    try:
+        return bool(d.isTouched())
+    except Exception:
+        return True
+
+
 def is_recovered(d):
     """True for a document entry ({ name, label, file, recovered }) that is
     itself a recovered copy not yet saved over its file: marked so, opened
@@ -433,10 +454,7 @@ def tidy(fresh=()):
     for d, e in es:
         if d.Name in fresh or not from_copy_folder(e["file"]):
             continue
-        try:
-            touched = d.isTouched()
-        except Exception:
-            touched = True
+        touched = _changed(d)
         if _keys(e) & originals and not touched:
             FreeCAD.closeDocument(d.Name)
             continue
