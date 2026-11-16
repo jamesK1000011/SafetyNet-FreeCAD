@@ -118,7 +118,7 @@ def pref_rollback(s, a):
 
 def _macro(name):
     if not macros.macro_name_ok(name):
-        raise bad("name: letters, digits, spaces, - and _ (60 at most), no folders.")
+        raise bad("name: letters, digits, spaces, - and _ (60 at most; a .py macro with its .py), no folders.")
     return macros.macro_path(name)
 
 
@@ -230,26 +230,41 @@ def macro_run(s, a):
     if missing:
         consts, _ = macros.macro_calls(text)
         raise bad(f"params: {', '.join(missing)} — not among the macro's named sizes ({', '.join(consts) or 'none'}).")
-    server = getattr(s, "server", None)
-    if server is None:
-        raise Refused("invalid_state", "No server to run the macro through.")
-    # Only reached with Agent Link's server: Agent Link is loaded.
-    agentlink = sys.modules["agentlink"]
-    cp, _ = checkpoints.take(s, f"before macro {name}", auto=True)
+    # Run as FreeCAD's Macro dialog runs it (macros.run_file); a macro of
+    # Agent Link calls inside Agent Link's serving of them.
+    around = None
+    if macros.uses_agentlink(text):
+        server = getattr(s, "server", None)
+        if server is None or "agentlink" not in sys.modules:
+            raise Refused("invalid_state", f"{name} is made of Agent Link calls: it runs through Agent Link for FreeCAD (its panel or an agent), not alone.")
+        around = sys.modules["agentlink"].serving(server)
+    try:
+        has_doc = s.doc is not None
+    except Exception:  # noqa: BLE001 — no document open
+        has_doc = False
+    cp = checkpoints.take(s, f"before macro {name}", auto=True)[0] if has_doc else None
     n0 = len(s.calls)
     try:
-        with agentlink.serving(server):
-            exec(compile(tree, p, "exec"), {"__name__": "__agentlink_macro__", "__file__": p})
+        macros.run_file(tree, p, around)
     except Exception as e:
         ran = len(s.calls) - n0
+        if cp is None:
+            raise Refused("failed", f"{name} stopped: {e}. No document was open before it, so there was nothing to roll back.")
         try:
             back = checkpoints.restore(s, cp["id"])
             how = back.get("how")
         except Exception as e2:
             how = f"not rolled back ({e2})"
-        raise Refused("failed", f"{name} stopped after {ran} call{'s' if ran != 1 else ''}: {e}. Rolled back whole ({how}) to how it was before.")
-    return {"ran": name, "calls": len(s.calls) - n0, "checkpoint": cp["id"], **({"params": params} if params else {}),
-            "bodies": [o.Label for o in s.bodies()], "note": f"history_restore {{ checkpoint: {cp['id']} }} goes back to before it."}
+        made = f" after {ran} call{'s' if ran != 1 else ''}" if around is not None else ""
+        raise Refused("failed", f"{name} stopped{made}: {e}. Rolled back whole ({how}) to how it was before.")
+    out = {"ran": name, **({"calls": len(s.calls) - n0} if around is not None else {}), **({"params": params} if params else {})}
+    try:
+        out["bodies"] = [o.Label for o in s.bodies()]
+    except Exception:  # noqa: BLE001 — the macro may have closed the document
+        pass
+    if cp is not None:
+        out.update({"checkpoint": cp["id"], "note": f"history_restore {{ checkpoint: {cp['id']} }} goes back to before it."})
+    return out
 
 
 HANDLERS = {f.__name__: f for f in (

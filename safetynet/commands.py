@@ -257,20 +257,24 @@ class Rollback(_Cmd):
 
 class Macros(_Cmd):
     menu, pixmap = "Macros…", "SafetyNet_Macros"
-    tip = "Show, approve or unapprove the macros Agent Link may run."
+    tip = "Show, approve, run or unapprove the macros in FreeCAD's folder."
 
     def Activated(self):
         r = call("macro_list", {})
         if r is None:
             return
         rows = [(f"{m['name']} · {m.get('state', '')}{' · ' + m['about'] if m.get('about') else ''}", m["name"]) for m in r.get("macros") or []]
-        if not rows:
-            say(f"No macros in {r.get('folder')}.", "No macros")
-            return
-        name = pick("Macros", f"Macros in {r.get('folder')}:", rows)
+        dialog = "Open in FreeCAD's Macro dialog"
+        rows.append((dialog, dialog))
+        name = pick("Macros", f"Macros in FreeCAD's macro folder, {r.get('folder')}:", rows)
         if not name:
             return
-        what = pick(name, "Do what with it?", [("Show", "show"), ("Approve…", "approve"), ("Take approval back", "unapprove")])
+        if name == dialog:
+            from .panel import open_macro_dialog
+
+            open_macro_dialog()
+            return
+        what = pick(name, "Do what with it?", [("Show", "show"), ("Approve…", "approve"), ("Run", "run"), ("Take approval back", "unapprove")])
         if what == "show":
             m = call("macro_show", {"name": name})
             if m:
@@ -283,6 +287,10 @@ class Macros(_Cmd):
                 if t:
                     if call("macro_approve", {"name": name, "confirm": t}):
                         say(f"{name} is approved. It runs until its file changes.", "Macro approved")
+        elif what == "run":
+            done = call("macro_run", {"name": name})
+            if done:
+                say(f"{name} ran." + (f" Checkpoint {done['checkpoint']} goes back to before it." if done.get("checkpoint") else ""), "Macro ran")
         elif what == "unapprove":
             if call("macro_unapprove", {"name": name}) is not None:
                 say(f"{name} is off the approved list.", "Approval taken back")

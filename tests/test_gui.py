@@ -325,8 +325,8 @@ class SessionWidget(unittest.TestCase):
             self.assertIn(("setVisible", (False,)), row.calls)
         self.assertNotIn("doc_switch", asked)
         self.assertEqual(asked, ["app_recover", "pref_history", "macro_list"])
-        self.assertIn(("setEnabled", (False,)), w.buttons["Run Macro"].calls)
-        self.assertEqual(w.enable_for("macro"), {"Approve Macro"})  # Run needs Agent Link
+        self.assertIn(("setEnabled", (False,)), w.buttons["Run Macro"].calls)  # nothing picked yet
+        self.assertEqual(w.enable_for("macro"), {"Approve Macro", "Run Macro"})  # runs alone as FreeCAD does
 
     def test_hosted_shows_them(self):
         w, asked = self.build(True)
@@ -455,7 +455,7 @@ class Buttons(unittest.TestCase):
         self.assertEqual(panel.buttons_for("recover", True), {"Use Copy"})
         self.assertEqual(panel.buttons_for("pref", True), {"Roll Back"})
         self.assertEqual(panel.buttons_for("macro", True), {"Approve Macro", "Run Macro"})
-        self.assertEqual(panel.buttons_for("macro", False), {"Approve Macro"})
+        self.assertEqual(panel.buttons_for("macro", False), {"Approve Macro", "Run Macro"})
         self.assertEqual(panel.buttons_for(None, True), set())
 
     def test_in_the_panel(self):

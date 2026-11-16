@@ -37,3 +37,8 @@ The first release, 0.1.0, is being prepared.
   documents' past 1 day), to the Trash, keeping open documents, the last
   crash, copies used this week and named checkpoints. Tools ▸ SafetyNet ▸
   Clean Up Copies… shows what would go and asks first.
+- Macros build on FreeCAD's own: the list is FreeCAD's macro folder (.FCMacro
+  and .py, as Macro ▸ Macros… shows it), and an approved macro runs as
+  FreeCAD runs one, alone as well as with Agent Link. The approval list and
+  the checkpoint before each run stay. The panel and the Macros command open
+  FreeCAD's Macro dialog.

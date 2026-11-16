@@ -53,8 +53,10 @@ its **SafetyNet** menu have:
 - **Settings History…** and **Roll Back Setting…**: see and undo changes to
   FreeCAD's settings. A setting read only at start applies when FreeCAD next
   opens. With Agent Link, FreeCAD restarts around the file for you.
-- **Macros…**: show a macro, approve it (you type the confirm), or take the
-  approval back.
+- **Macros…**: the macros in FreeCAD's macro folder, the same ones
+  Macro ▸ Macros… lists. Show one, approve it (you type the confirm), run it
+  as FreeCAD does with a checkpoint before, or take the approval back. It
+  also opens FreeCAD's own Macro dialog.
 - **SafetyNet Panel**: the Session panel.
 
 <!-- screenshot: the SafetyNet menu open, showing all eight commands -->
@@ -109,7 +111,7 @@ is generated from the tool definitions by `tools/gen_readme_tools.py`.
 | `macro_show` | safety | One macro's text, its named sizes and how many calls it makes, and whether it is approved. |
 | `macro_approve` | safety | The person approves a macro to be run by Agent Link. |
 | `macro_unapprove` | safety | Take a macro off the approved list. |
-| `macro_run` | safety | Run an approved macro. |
+| `macro_run` | safety | Run an approved macro as FreeCAD's Macro dialog runs it. |
 | `app_recover` | safety | Documents back after a crash or a hang. |
 | `pref_history` | safety | The settings changes Agent Link made, newest first. |
 | `pref_rollback` | safety | Put FreeCAD's settings back as they were before a change. |

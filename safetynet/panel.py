@@ -197,9 +197,19 @@ def never_saved(name):
 
 BUTTONS = (("Use Copy", "recover", "Open the picked copy and offer to save it over its file."),
            ("Roll Back", "pref", "Put the settings back as they were before the picked change."),
-           ("Approve Macro", "macro", "Let Agent Link run the picked macro."),
-           ("Run Macro", "macro", "Run the picked macro through Agent Link."))
-NEEDS_AGENT_LINK = {"Run Macro"}
+           ("Approve Macro", "macro", "Let the picked macro run from SafetyNet and Agent Link."),
+           ("Run Macro", "macro", "Run the picked macro as FreeCAD's Macro dialog does."))
+# Run Macro runs any approved macro alone too; one made of Agent Link calls
+# is refused there with why.
+NEEDS_AGENT_LINK = set()
+MACRO_DIALOG = "Std_DlgMacroExecute"
+
+
+def open_macro_dialog():
+    """FreeCAD's own Macro ▸ Macros… dialog."""
+    import FreeCADGui
+
+    FreeCADGui.runCommand(MACRO_DIALOG, 0)
 
 
 def buttons_for(kind, hosted):
@@ -287,11 +297,14 @@ def widget(runner, hosted=False):
                 b.setEnabled(False)
                 row.addWidget(b, len(self.buttons) // 2, len(self.buttons) % 2)
                 self.buttons[label] = b
-            if not hosted:
-                # A saved macro runs its calls through Agent Link.
-                self.buttons["Run Macro"].setToolTip("Needs Agent Link for FreeCAD.")
-            self.tree.itemSelectionChanged.connect(self.picked)
             lay.addLayout(row)
+            # FreeCAD's own macro tools, a click away: SafetyNet lists the
+            # same folder and adds the approval and the checkpoint.
+            self.macro_link = QtWidgets.QLabel("<a href=\"macros\">Open in FreeCAD's Macro dialog</a>")
+            self.macro_link.setToolTip("FreeCAD's Macro dialog, to record, edit or run macros by hand.")
+            self.macro_link.linkActivated.connect(lambda *_: open_macro_dialog())
+            self.tree.itemSelectionChanged.connect(self.picked)
+            lay.addWidget(self.macro_link)
             self.roles = theme.roles(self)
             theme.follow(self, self._styled)
 

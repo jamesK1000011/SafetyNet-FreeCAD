@@ -1,10 +1,15 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
-# Macros of agent calls: a session's steps saved as a .FCMacro in FreeCAD's
-# own macro folder, its key sizes named at the top, replayed through
-# agentlink.run(tool, args) — the same refusals and undo steps as live calls.
-# A macro is Python with the run of the Mac, so one runs only once the person
-# approved it (its SHA-256 recorded in ~/AgentLink/macros-approved.json;
-# changed code needs approving again), and the agent never approves its own.
+# Macros on FreeCAD's own macro tools: the macros are the files in FreeCAD's
+# macro folder (Preferences ▸ Macro ▸ MacroPath, what Macro ▸ Macros… lists:
+# .FCMacro and .py), run as FreeCAD runs one (the file executed with
+# __main__'s globals, __name__ "__main__" and __file__ set, the macro folder
+# on sys.path). What SafetyNet adds is what FreeCAD lacks: an approval list
+# (a macro is Python with the run of the Mac, so it runs here only once the
+# person approved it, its SHA-256 recorded in ~/AgentLink/macros-approved.json;
+# changed code needs approving again; an agent never approves) and a
+# checkpoint before each run. A session's agent calls can be saved as a
+# .FCMacro too, its key sizes named at the top, replayed through
+# agentlink.run(tool, args) — those need Agent Link to run.
 #
 # Plain FreeCAD, imported where it is used: writing and reading a macro's
 # text needs neither.
@@ -55,8 +60,74 @@ def approval_state(name, p):
         return "no"
 
 
+# The files FreeCAD's Macro dialog lists.
+EXTS = (".FCMacro", ".py")
+
+
 def macro_name_ok(name):
-    return bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 _-]{0,60}", str(name or "")))
+    """A macro's name: its file name without .FCMacro (a .py macro keeps
+    its .py); no folders."""
+    return bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 _-]{0,60}(\.py)?", str(name or "")))
+
+
+def uses_agentlink(text):
+    """True for a macro made of Agent Link calls (it imports agentlink):
+    it runs only where Agent Link serves them."""
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return False
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Import) and any(a.name.split(".")[0] == "agentlink" for a in n.names):
+            return True
+        if isinstance(n, ast.ImportFrom) and (n.module or "").split(".")[0] == "agentlink":
+            return True
+    return False
+
+
+def freecad_globals(p):
+    """The globals FreeCAD runs a macro file with (Interpreter::runFile with
+    local: a copy of __main__'s, as the Python console has them), __name__
+    "__main__" and __file__ the macro's path; FreeCAD, App, FreeCADGui and
+    Gui there when they import."""
+    import __main__
+
+    g = dict(vars(__main__))
+    for k in ("__builtins__",):
+        g.setdefault(k, __builtins__)
+    for name, alias in (("FreeCAD", "App"), ("FreeCADGui", "Gui")):
+        try:
+            mod = __import__(name)
+        except ImportError:
+            continue
+        g.setdefault(name, mod)
+        g.setdefault(alias, mod)
+    g.update({"__name__": "__main__", "__file__": p})
+    return g
+
+
+def run_file(code, p, around=None):
+    """A macro run as FreeCAD's macro execution runs one: its code (source
+    text or a parsed tree) executed with freecad_globals, the macro folder on
+    sys.path for its own imports while it runs. around: a context manager to
+    run it in (Agent Link serving its calls)."""
+    import contextlib
+    import sys
+
+    compiled = compile(code, p, "exec")
+    folder = os.path.dirname(os.path.abspath(p))
+    added = folder not in sys.path
+    if added:
+        sys.path.insert(0, folder)
+    try:
+        with (around or contextlib.nullcontext()):
+            exec(compiled, freecad_globals(p))
+    finally:
+        if added:
+            try:
+                sys.path.remove(folder)
+            except ValueError:
+                pass
 
 
 def _ident(k):
@@ -134,7 +205,20 @@ def macro_dir():
 
 
 def macro_path(name):
-    return os.path.join(macro_dir(), f"{name}.FCMacro")
+    n = str(name)
+    return os.path.join(macro_dir(), n if n.endswith(".py") else f"{n}.FCMacro")
+
+
+def about(text):
+    """A macro's line about itself: FreeCAD's macro metadata __Comment__
+    when it has one, else its first comment line."""
+    m = re.search(r"^__Comment__\s*=\s*(['\"])(.*?)\1", text, re.M)
+    if m:
+        return m.group(2).strip()
+    for line in text.splitlines():
+        if line.startswith("# ") and "coding" not in line:
+            return line[2:].strip()
+    return ""
 
 
 def with_params(text, params):
@@ -165,24 +249,23 @@ def with_params(text, params):
 
 
 def listing():
-    """The macros in the folder, each approved, changed or not."""
+    """The macros FreeCAD's Macro dialog lists in its macro folder (.FCMacro
+    and .py), each approved, changed or not."""
     d = macro_dir()
     rows = []
     try:
-        names = sorted(f for f in os.listdir(d) if f.lower().endswith(".fcmacro"))
+        files = sorted(f for f in os.listdir(d) if f.lower().endswith((".fcmacro", ".py")) and os.path.isfile(os.path.join(d, f)))
     except OSError:
-        names = []
-    for f in names:
-        name = f[: -len(".FCMacro")]
+        files = []
+    for f in files:
+        name = f[: -len(".FCMacro")] if f.lower().endswith(".fcmacro") else f
+        if not macro_name_ok(name):
+            continue
         p = os.path.join(d, f)
-        first = ""
         try:
             with open(p, encoding="utf-8", errors="replace") as fh:
-                for line in fh:
-                    if line.startswith("# ") and "coding" not in line:
-                        first = line[2:].strip()
-                        break
+                first = about(fh.read(20000))
         except OSError:
-            pass
+            first = ""
         rows.append({"name": name, "state": approval_state(name, p), **({"about": first[:160]} if first else {})})
     return d, rows
