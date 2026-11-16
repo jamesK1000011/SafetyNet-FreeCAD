@@ -48,6 +48,8 @@ its **SafetyNet** menu have:
 - **Restore Checkpoint…**: go back to one.
 - **Recovered Copies…**: after a crash, open the newest good copy beside your
   file. It is saved over your file only after you type the confirm.
+- **Clean Up Copies…**: see how many old copies would go (and how many MB),
+  then move them to the Trash if you say yes.
 - **Settings History…** and **Roll Back Setting…**: see and undo changes to
   FreeCAD's settings. A setting read only at start applies when FreeCAD next
   opens. With Agent Link, FreeCAD restarts around the file for you.
@@ -55,7 +57,7 @@ its **SafetyNet** menu have:
   approval back.
 - **SafetyNet Panel**: the Session panel.
 
-<!-- screenshot: the SafetyNet menu open, showing all seven commands -->
+<!-- screenshot: the SafetyNet menu open, showing all eight commands -->
 
 **Tools ▸ SafetyNet in every workbench.** The same commands are in the Tools
 menu wherever you are, so recovery is always one click away.
@@ -76,9 +78,21 @@ Everything goes under `~/AgentLink` (or the folder in `$AGENTLINK_HOME`):
 - `settings/` and `settings-log.jsonl`: settings snapshots and the change log.
 - `macros-approved.json`: the macros you approved.
 - `hidden.json` and `reopen.json`: what to reopen after a restart.
+- `safetynet/`: the copies you used lately and the copies the last crash
+  brought back, so the clean-up keeps them.
 
 Auto-save runs every 5 minutes or every 10 changes and keeps the newest 5
 copies. FreeCAD's own AutoSave stays on too.
+
+Old copies are cleaned up when SafetyNet starts and at most once a day after.
+Each document keeps its newest 3 copies, and none older than 7 days. A
+document that was never saved keeps its copies for 1 day. A copy is always
+kept if it is the newest of its document, if the document is open, if it came
+back after the last crash, if you used it in the last week, or if it is a
+named checkpoint. Removed copies go to the Trash. FreeCAD's own recovery
+files are left to FreeCAD. To change the numbers, set `CopiesKeep`,
+`CopiesMaxAgeDays` and `ScratchMaxAgeDays` under
+`BaseApp/Preferences/Mod/SafetyNet` (Tools ▸ Edit parameters).
 
 ## What an agent can do with it
 

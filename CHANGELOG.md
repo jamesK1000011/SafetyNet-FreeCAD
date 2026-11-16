@@ -31,3 +31,9 @@ The first release, 0.1.0, is being prepared.
   and SafetyNet's messages have a short bold first line. Opening a recovered
   copy rebuilds the shapes FreeCAD's autosave left empty and says why the
   Report view showed errors.
+- Recovered Copies shows only open documents and a Last crash group; the
+  rest is under a folded Older row. Old copies are cleaned up at start and
+  at most once a day (the newest 3 a document, none past 7 days, never-saved
+  documents' past 1 day), to the Trash, keeping open documents, the last
+  crash, copies used this week and named checkpoints. Tools ▸ SafetyNet ▸
+  Clean Up Copies… shows what would go and asks first.

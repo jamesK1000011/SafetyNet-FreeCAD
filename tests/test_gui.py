@@ -381,13 +381,8 @@ class SessionWidget(unittest.TestCase):
 class RecoveredByDocument(unittest.TestCase):
     """About forty rows of a day's autosaves on the Mac, copies of copies
     ("OpTest_recovered1") apart from their document: one row a original
-    document with its count, newest first; closed ones over two hours old
-    folded under Older; the source said in words."""
-
-    def setUp(self):
-        import datetime
-
-        self.now = datetime.datetime(2026, 11, 15, 19, 0)
+    document with its count, newest first; shown only for open documents
+    and the last crash, the rest folded under Older; sources in words."""
 
     def docs(self):
         def copies(day, hours, source="autosave"):
@@ -402,14 +397,15 @@ class RecoveredByDocument(unittest.TestCase):
                 {"document": "OpTest_recovered_recovered1", "label": "OpTest_recovered1", "copies": copies("2026-11-15", (10,))},
                 {"document": "OpTest", "label": "OpTest", "copies": copies("2026-11-15", (9, 8))},
                 {"document": "Box", "label": "Box", "copies": copies("2026-11-14", (9,))},
+                {"document": "Crashed", "label": "Crashed", "copies": [{"time": "2026-11-13 09:00", "source": "autosave", "crash": True}]},
                 {"document": "Empty", "label": "Empty", "copies": []}]
 
     def test_one_row_an_original_document_newest_first(self):
         from safetynet import panel
 
-        g = panel.recovered_groups(self.docs(), open_names=["Box"], now=self.now)
-        self.assertEqual([x["label"] for x in g], ["WindowTest", "OpTest", "Box"])
-        win, op, box = g
+        g = panel.recovered_groups(self.docs(), open_names=["Box"])
+        self.assertEqual([x["label"] for x in g], ["WindowTest", "OpTest", "Box", "Crashed"])
+        win, op, box, crashed = g
         self.assertEqual(win["count"], 7)
         self.assertEqual(win["latest"][1], "FreeCAD autosave")
         self.assertEqual(win["latest"][2], {"document": "WindowTest", "label": "WindowTest"})  # Use Copy acts on the row
@@ -417,11 +413,12 @@ class RecoveredByDocument(unittest.TestCase):
                                                        "My checkpoint", "Agent checkpoint", "Checkpoint"])
         self.assertEqual(panel.group_text(win), "WindowTest — FreeCAD autosave (7 copies)")
         self.assertEqual(op["count"], 3)
-        self.assertFalse(win["older"])  # an hour old
-        self.assertTrue(op["older"])  # closed, nine hours old
-        self.assertFalse(box["older"])  # still open
+        self.assertTrue(win["older"])  # closed, however recent
+        self.assertTrue(op["older"])
+        self.assertFalse(box["older"])  # open now, though a day old
         self.assertTrue(box["expanded"])
-        self.assertFalse(win["expanded"])  # closed: folded, its count says the rest
+        self.assertFalse(crashed["older"])  # the last crash brought it back
+        self.assertTrue(crashed["crash"])
         self.assertEqual(panel.group_text(box), "Box — SafetyNet autosave")
 
     def test_in_the_panel(self):
@@ -429,11 +426,13 @@ class RecoveredByDocument(unittest.TestCase):
 
         with gui_stubs():
             w = panel.widget(lambda t, a: (True, {}), hosted=False)
-            top = w.recovered(panel.recovered_groups(self.docs(), now=self.now))
+            top = w.recovered(panel.recovered_groups(self.docs(), open_names=["Box"]))
         rows = [c[1][0] for c in top.calls if c[0] == "addChild"]
-        self.assertEqual(len(rows), 2)  # WindowTest, and Older last
-        fold = rows[-1]
-        self.assertEqual(len([c for c in fold.calls if c[0] == "addChild"]), 2)  # OpTest, Box
+        self.assertEqual(len(rows), 3)  # Last crash first, Box, Older last
+        crash, fold = rows[0], rows[-1]
+        self.assertEqual(len([c for c in crash.calls if c[0] == "addChild"]), 1)
+        self.assertIn(("setExpanded", (True,)), crash.calls)
+        self.assertEqual(len([c for c in fold.calls if c[0] == "addChild"]), 2)  # WindowTest, OpTest
         self.assertIn(("setExpanded", (False,)), fold.calls)
 
 

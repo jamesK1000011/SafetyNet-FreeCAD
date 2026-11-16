@@ -11,6 +11,7 @@ safetynet/__init__.py
 safetynet/agentlink_families.py
 safetynet/autosave.py
 safetynet/checkpoints.py
+safetynet/cleanup.py
 safetynet/commands.py
 safetynet/fam_history.py
 safetynet/fam_safety.py
@@ -33,6 +34,7 @@ safetynet/settings.py
 safetynet/theme.py
 safetynet/workbench.py
 tests/data/theme.cfg
+tests/test_cleanup.py
 tests/test_gui.py
 tests/test_layout.py
 tests/test_layout_placer.py

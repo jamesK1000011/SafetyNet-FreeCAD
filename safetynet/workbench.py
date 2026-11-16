@@ -41,6 +41,40 @@ def _start():
         recovery.reopen_now()
     except Exception as e:  # noqa: BLE001 — never stop FreeCAD opening
         _warn(f"SafetyNet: start-up skipped: {e}\n")
+    _prune(force=True)
+    _daily()
+
+
+_timer = []
+
+
+def _prune(force=False):
+    """Old recovered copies pruned, quietly (cleanup.py): at start, then at
+    most once a day. Only a line in the log (View ▸ Report view with Log)."""
+    try:
+        from . import cleanup
+
+        r = cleanup.maybe_prune(force=force)
+        if r and r.get("removed"):
+            _log(f"SafetyNet: {r['removed']} old recovered copies cleaned up ({r['mb']} MB).\n")
+    except Exception as e:  # noqa: BLE001
+        _log(f"SafetyNet: clean-up skipped: {e}\n")
+
+
+def _daily():
+    """An hourly look whether a day has gone by since the last clean-up."""
+    if _timer:
+        return
+    try:
+        from PySide import QtCore
+
+        t = QtCore.QTimer()
+        t.setInterval(3600 * 1000)
+        t.timeout.connect(_prune)
+        t.start()
+        _timer.append(t)
+    except Exception:  # noqa: BLE001 — no Qt: at start only
+        pass
 
 
 def make_class(Gui):

@@ -195,6 +195,34 @@ def _change_text(c):
     return f"#{c['change']} · {when(c.get('time', ''))} · {change_text(c)}"
 
 
+class CleanUp(_Cmd):
+    menu, pixmap = "Clean Up Copies…", "SafetyNet_Recover"
+    tip = "Remove old recovered copies, after showing what would go."
+
+    def Activated(self):
+        from . import cleanup
+        from .panel import message
+
+        s = cleanup.settings()
+        dry = cleanup.prune(dry_run=True)
+        rules = (f"Kept: the newest {s['CopiesKeep']} copies of each document, none older than {s['CopiesMaxAgeDays']} days "
+                 f"({s['ScratchMaxAgeDays']} for never-saved documents), and always open documents, the last crash and copies used this week.")
+        if not dry["count"]:
+            say(f"Nothing to clean up. {rules}", "No old copies")
+            return
+        QtWidgets = _qt()
+        sure = message(QtWidgets, _mw(), f"{dry['count']} old copies ({dry['mb']} MB) go to the Trash, or are removed where there is none. {rules}", "question",
+                       f"Remove {dry['count']} old copies?")
+        if sure != QtWidgets.QMessageBox.Yes:
+            return
+        out = cleanup.prune(dry_run=False)
+        where = "moved to the Trash" if out.get("trashed") == out.get("removed") else "removed"
+        text = f"{out.get('removed', 0)} copies ({out.get('mb', 0)} MB) {where}."
+        if out.get("failed"):
+            text += f" {len(out['failed'])} could not be moved."
+        say(text, "Copies cleaned up", error=bool(out.get("failed")))
+
+
 class SettingsHistory(_Cmd):
     menu, pixmap = "Settings History…", "preferences-system"
     tip = "Show the logged settings changes, newest first."
@@ -290,13 +318,14 @@ COMMANDS = {
     "SafetyNet_Checkpoint": Checkpoint,
     "SafetyNet_Restore": Restore,
     "SafetyNet_Recover": Recover,
+    "SafetyNet_CleanUp": CleanUp,
     "SafetyNet_SettingsHistory": SettingsHistory,
     "SafetyNet_Rollback": Rollback,
     "SafetyNet_Macros": Macros,
     "SafetyNet_Panel": Panel,
 }
 NAMES = list(COMMANDS)
-TOOLBAR = NAMES
+TOOLBAR = [n for n in NAMES if n != "SafetyNet_CleanUp"]  # a menu command
 MENU = "SafetyNet_Menu"
 
 _done = []

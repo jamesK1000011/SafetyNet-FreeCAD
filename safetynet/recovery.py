@@ -290,7 +290,7 @@ def open_copy(src, name, label, t):
 def recover_docs(documents, since=None):
     """The newest copy of each document that opens, beside its file: one
     per original (dedupe), named after the original. (recovered, failed)"""
-    rec, failed = [], []
+    rec, failed, opened = [], [], []
     for d in dedupe(documents):
         name, label, fname = d.get("name"), d["baseLabel"], d.get("file") or ""
         if not name:
@@ -314,12 +314,29 @@ def recover_docs(documents, since=None):
             if since:
                 mins = max(0, int(round((float(since) - src["t"]) / 60.0)))
                 lost = "nothing after it lost" if mins == 0 else f"about {mins} min of changes lost"
+            opened.append(src["path"])
             rec.append({"label": label, "document": nd.Name, "as": nd.Label, "source": src["source"], "time": time.strftime("%Y-%m-%d %H:%M", time.localtime(src["t"])),
                         **({"lost": lost} if lost else {}), **({"skipped": errors} if errors else {}), "file": fname or None})
             break
         else:
             failed.append({"label": label, "why": "; ".join(errors)[:400]})
+    _remember(opened, [r["label"] for r in rec], crash=bool(since))
     return rec, failed
+
+
+def _remember(paths, labels, crash):
+    """Copies opened kept from pruning a week (cleanup.used); after a crash
+    (since given) or a forced restart they are the Last crash too."""
+    if not paths:
+        return
+    try:
+        from . import cleanup
+
+        cleanup.mark_used(paths)
+        if crash:
+            cleanup.mark_crash(paths, labels)
+    except Exception:  # noqa: BLE001 — never fail a recovery over this
+        pass
 
 
 def listing():
@@ -335,6 +352,12 @@ def listing():
                 names.setdefault(n, {"label": n, "file": ""})
         except OSError:
             pass
+    try:
+        from .cleanup import crash_this_session
+
+        crash = crash_this_session()
+    except Exception:  # noqa: BLE001
+        crash = set()
     out = []
     for n, info in sorted(names.items()):
         fc = [(p, t) for p, t, _ in freecad_recovery_files(cache_dirs(), info["label"])]
@@ -342,7 +365,8 @@ def listing():
         if srcs:
             out.append({"document": n, "label": info["label"], "t": srcs[0]["t"],
                         "copies": [{"source": x["source"], "time": time.strftime("%Y-%m-%d %H:%M", time.localtime(x["t"])), "path": x["path"],
-                                   **({"by": x["by"]} if x.get("by") else {})} for x in srcs]})
+                                   **({"by": x["by"]} if x.get("by") else {}),
+                                   **({"crash": True} if os.path.abspath(x["path"]) in crash else {})} for x in srcs]})
     return newest_first(out)
 
 
@@ -465,12 +489,13 @@ def reopen_pending(now=None):
 
 def reopen_now():
     """Open each pending copy beside its file. The labels opened."""
-    opened, fresh = [], set()
+    opened, fresh, used = [], set(), []
     for c in reopen_pending():
         try:
             if os.path.isfile(c.get("copy", "")):
                 nd = open_copy(c["copy"], c.get("name") or "doc", c.get("label") or c.get("name") or "doc", float(c.get("t") or time.time()))
                 opened.append(nd.Label)
+                used.append(c["copy"])
                 fresh.add(nd.Name)
         except Exception as e:  # noqa: BLE001
             try:
@@ -479,6 +504,7 @@ def reopen_now():
                 FreeCAD.Console.PrintWarning(f"SafetyNet: could not reopen {c.get('label')} from its copy: {e}\n")
             except Exception:
                 pass
+    _remember(used, opened, crash=True)
     try:
         tidy(fresh)
     except Exception:  # noqa: BLE001

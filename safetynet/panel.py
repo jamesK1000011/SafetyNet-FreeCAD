@@ -104,13 +104,11 @@ def recovered_rows(documents, per_doc=5):
     return [r for _, r in sorted(rows, key=lambda x: x[0], reverse=True)]
 
 
+# (Copies pruned by cleanup.py; the panel shows open documents and the
+# last crash, the rest under Older.)
 SOURCES = {"freecad": "FreeCAD autosave", "autosave": "SafetyNet autosave", "checkpoint": "Checkpoint"}
 # A checkpoint by who took it (checkpoints.who); one from before says neither.
 CHECKPOINT_BY = {"person": "My checkpoint", "agent": "Agent checkpoint"}
-# A closed document whose newest copy is older than this goes under Older.
-OLDER_AFTER_S = 2 * 3600
-
-
 def source_words(source, by=None):
     """Where a copy came from, in words: freecad -> FreeCAD autosave; a
     checkpoint by who took it: My checkpoint, Agent checkpoint, or plain
@@ -121,41 +119,27 @@ def source_words(source, by=None):
     return SOURCES.get(s, s)
 
 
-def _stamp(text):
-    """A time as SafetyNet writes it, as a datetime (None when unreadable)."""
-    import datetime
-
-    for f in _STAMPS:
-        try:
-            return datetime.datetime.strptime(str(text or "").strip(), f)
-        except ValueError:
-            continue
-    return None
-
-
-def recovered_groups(documents, open_names=(), now=None, per_doc=8):
+def recovered_groups(documents, open_names=(), per_doc=8):
     """The Recovered Copies by original document, newest first: copies of
     "Box", "Box_recovered", "Box_recovered1" and "Box (recovered 18:48)"
     are one group, its newest copy, how many it has and the rest under it.
     [{"label", "document", "latest": (when, what, data), "count", "rest":
-    [(when, what, data)], "time", "open", "older", "expanded"}]. A group none
-    of whose documents is open and whose newest copy is over two hours old
-    is "older" (the panel folds those under one Older row); only the groups
-    of open documents start unfolded."""
-    import datetime
-
+    [(when, what, data)], "time", "open", "crash", "older", "expanded"}].
+    Shown: the groups of documents open now and of the copies the last
+    crash or forced restart of this FreeCAD brought back ("crash"); every
+    other group is "older" (folded under one Older row)."""
     from .recovery import original_label, original_name
 
-    now = now or datetime.datetime.now()
     opened = set(open_names or ())
     groups = {}
     for d in documents or []:
         if not d.get("copies"):
             continue
         key = original_name(d.get("document") or d.get("label"))
-        g = groups.setdefault(key, {"copies": [], "open": False, "labels": []})
+        g = groups.setdefault(key, {"copies": [], "open": False, "crash": False, "labels": []})
         data = {"document": d.get("document"), "label": d.get("label")}
         g["open"] = g["open"] or d.get("document") in opened
+        g["crash"] = g["crash"] or any(c.get("crash") for c in d.get("copies"))
         g["labels"].append(original_label(d.get("label") or d.get("document")))
         g["copies"] += [(str(c.get("time", "")), c, data) for c in d.get("copies")]
     out = []
@@ -166,10 +150,9 @@ def recovered_groups(documents, open_names=(), now=None, per_doc=8):
             label = lab if len(lab) < len(label) else label
         rows = [(when(t), source_words(c.get("source"), c.get("by")), data) for t, c, data in copies[:per_doc]]
         latest = copies[0][0]
-        made = _stamp(latest)
-        older = not g["open"] and made is not None and (now - made).total_seconds() > OLDER_AFTER_S
         out.append({"label": label, "document": key, "latest": rows[0], "count": len(copies), "rest": rows[1:],
-                    "time": latest, "open": g["open"], "older": older, "expanded": g["open"]})
+                    "time": latest, "open": g["open"], "crash": g["crash"], "older": not (g["open"] or g["crash"]),
+                    "expanded": g["open"]})
     out.sort(key=lambda g: g["time"], reverse=True)
     return out
 
@@ -394,17 +377,22 @@ def widget(runner, hosted=False):
         def recovered(self, groups):
             """Recovered Copies by original document: a row a document (its
             newest copy and the count, which Use Copy acts on as well), its
-            other copies under it, unfolded only for open documents; the
-            closed ones over two hours old under one folded Older row."""
+            other copies under it, unfolded only for open documents; those
+            the last crash brought back under Last crash; the rest under
+            one folded Older row."""
             top = QtWidgets.QTreeWidgetItem(["Recovered Copies", "", ""])
             top.setForeground(0, QtGui.QBrush(QtGui.QColor(self.roles["accent"])))
             muted = QtGui.QBrush(QtGui.QColor(self.roles["muted"]))
             older = [g for g in groups if g.get("older")]
-            fold = None
+            fold = crash = None
             if older:
                 fold = QtWidgets.QTreeWidgetItem(["", "Older", f"{len(older)} closed documents"])
-                fold.setToolTip(2, "Copies of closed documents, over two hours old.")
+                fold.setToolTip(2, "Copies of documents that are not open now.")
                 fold.setForeground(1, muted)
+            if any(g.get("crash") for g in groups):
+                crash = QtWidgets.QTreeWidgetItem(["", "Last crash", "Copies brought back after it"])
+                crash.setToolTip(2, "Copies opened after the last crash or forced restart.")
+                top.addChild(crash)
             for g in groups:
                 when_, what, data = g["latest"]
                 n = g["count"]
@@ -417,8 +405,10 @@ def widget(runner, hosted=False):
                     it.setData(0, QtCore.Qt.UserRole, json.dumps({"kind": "recover", **r[2]}))
                     it.setForeground(1, muted)
                     head.addChild(it)
-                (fold if g.get("older") else top).addChild(head)
+                (fold if g.get("older") else crash if g.get("crash") else top).addChild(head)
                 head.setExpanded(bool(g["expanded"]) and bool(g["rest"]))
+            if crash is not None:
+                crash.setExpanded(True)
             if fold is not None:
                 top.addChild(fold)
                 fold.setExpanded(False)
