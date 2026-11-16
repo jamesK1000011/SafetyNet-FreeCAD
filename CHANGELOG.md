@@ -25,7 +25,8 @@ The first release, 0.1.0, is being prepared.
   how to uninstall, a privacy statement, and this changelog.
 - The SafetyNet panel lists Recovered Copies once per original document,
   copies of copies included, says where each copy came from (FreeCAD
-  autosave, SafetyNet autosave, checkpoint), and folds closed documents over
+  autosave, SafetyNet autosave, My checkpoint or Agent checkpoint, by who
+  took it), and folds closed documents over
   two hours old under Older. Its buttons work only on the kind of row picked,
   and SafetyNet's messages have a short bold first line. Opening a recovered
   copy rebuilds the shapes FreeCAD's autosave left empty and says why the

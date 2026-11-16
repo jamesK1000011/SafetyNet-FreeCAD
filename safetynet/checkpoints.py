@@ -40,14 +40,27 @@ def cp_save_index(doc, entries):
     _save(os.path.join(cp_dir(doc), "index.json"), entries)
 
 
-def cp_new(doc, name=None, step=0, undo=0, tx=0, auto=False):
+# Who took a checkpoint, written with it: the person (SafetyNet's own
+# commands and dock, local.LocalSession) or an agent's call (any other
+# session). Checkpoints from before carry neither.
+PERSON, AGENT = "person", "agent"
+
+
+def who(session):
+    """Who a session's checkpoints are taken by: its "by", else an agent."""
+    by = getattr(session, "by", None)
+    return by if by in (PERSON, AGENT) else AGENT
+
+
+def cp_new(doc, name=None, step=0, undo=0, tx=0, auto=False, by=None):
     """A new checkpoint's entry and the file it is to be written to (the
     caller saves the copy there, then cp_add)."""
     entries = cp_index(doc)
     n = max([e.get("n", 0) for e in entries] or [0]) + 1
     tag = safe(name) if name else ("auto" if auto else "cp")
     f = os.path.join(cp_dir(doc), f"{n}-{tag}.FCStd")
-    return {"id": f"cp{n}", "n": n, "name": name, "auto": bool(auto), "file": f, "step": step, "undo": undo, "tx": tx, "t": time.time()}
+    return {"id": f"cp{n}", "n": n, "name": name, "auto": bool(auto), "file": f, "step": step, "undo": undo, "tx": tx, "t": time.time(),
+            **({"by": by} if by else {})}
 
 
 def cp_add(doc, entry, cap):
@@ -129,7 +142,8 @@ def take(session, name=None, auto=False, doc=None):
 
     d = doc or session.doc
     mine = d is session.doc
-    e = cp_new(d.Name, name, step=len(session.steps) if mine else 0, undo=d.UndoCount, tx=session.tx if mine else -1, auto=auto)
+    e = cp_new(d.Name, name, step=len(session.steps) if mine else 0, undo=d.UndoCount, tx=session.tx if mine else -1, auto=auto,
+               by=who(session))
     e.update({"label": d.Label, "fileName": d.FileName or "", "session": id(session)})
     os.makedirs(os.path.dirname(e["file"]), exist_ok=True)
     d.saveCopy(e["file"])

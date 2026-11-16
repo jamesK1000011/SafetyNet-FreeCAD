@@ -104,14 +104,20 @@ def recovered_rows(documents, per_doc=5):
     return [r for _, r in sorted(rows, key=lambda x: x[0], reverse=True)]
 
 
-SOURCES = {"freecad": "FreeCAD autosave", "autosave": "SafetyNet autosave", "checkpoint": "checkpoint"}
+SOURCES = {"freecad": "FreeCAD autosave", "autosave": "SafetyNet autosave", "checkpoint": "Checkpoint"}
+# A checkpoint by who took it (checkpoints.who); one from before says neither.
+CHECKPOINT_BY = {"person": "My checkpoint", "agent": "Agent checkpoint"}
 # A closed document whose newest copy is older than this goes under Older.
 OLDER_AFTER_S = 2 * 3600
 
 
-def source_words(source):
-    """Where a copy came from, in words: freecad -> FreeCAD autosave."""
+def source_words(source, by=None):
+    """Where a copy came from, in words: freecad -> FreeCAD autosave; a
+    checkpoint by who took it: My checkpoint, Agent checkpoint, or plain
+    Checkpoint for one written before it said."""
     s = str(source or "")
+    if s == "checkpoint" and by in CHECKPOINT_BY:
+        return CHECKPOINT_BY[by]
     return SOURCES.get(s, s)
 
 
@@ -158,7 +164,7 @@ def recovered_groups(documents, open_names=(), now=None, per_doc=8):
         label = g["labels"][0] if g["labels"] else key
         for lab in g["labels"]:  # the shortest: the original's own label
             label = lab if len(lab) < len(label) else label
-        rows = [(when(t), source_words(c.get("source")), data) for t, c, data in copies[:per_doc]]
+        rows = [(when(t), source_words(c.get("source"), c.get("by")), data) for t, c, data in copies[:per_doc]]
         latest = copies[0][0]
         made = _stamp(latest)
         older = not g["open"] and made is not None and (now - made).total_seconds() > OLDER_AFTER_S

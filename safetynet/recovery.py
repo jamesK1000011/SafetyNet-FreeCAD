@@ -146,7 +146,8 @@ def recovery_sources(doc, freecad_recovery=()):
         pass
     for e in checkpoints.cp_index(doc):
         if os.path.isfile(e.get("file", "")):
-            out.append({"source": "checkpoint", "path": e["file"], "t": os.path.getmtime(e["file"]), "checkpoint": e.get("id")})
+            out.append({"source": "checkpoint", "path": e["file"], "t": os.path.getmtime(e["file"]), "checkpoint": e.get("id"),
+                        **({"by": e["by"]} if e.get("by") else {})})
     for p, t in freecad_recovery:
         out.append({"source": "freecad", "path": p, "t": t})
     return sorted(out, key=lambda x: -x["t"])
@@ -340,7 +341,8 @@ def listing():
         srcs = recovery_sources(n, fc)[:6]
         if srcs:
             out.append({"document": n, "label": info["label"], "t": srcs[0]["t"],
-                        "copies": [{"source": x["source"], "time": time.strftime("%Y-%m-%d %H:%M", time.localtime(x["t"])), "path": x["path"]} for x in srcs]})
+                        "copies": [{"source": x["source"], "time": time.strftime("%Y-%m-%d %H:%M", time.localtime(x["t"])), "path": x["path"],
+                                   **({"by": x["by"]} if x.get("by") else {})} for x in srcs]})
     return newest_first(out)
 
 

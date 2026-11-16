@@ -69,6 +69,27 @@ class Checkpoints(Home):
         self.assertIn("cp1", names)
         self.assertEqual(len([f for f in os.listdir(checkpoints.cp_dir("My Doc/1")) if f.endswith(".FCStd")]), 11)
 
+    def test_who_took_it_is_written_with_it(self):
+        """A checkpoint says who took it: the person (SafetyNet's own
+        commands and dock) or an agent's call; one from before says neither
+        and recovery passes on what it has."""
+        import types
+
+        from safetynet import local
+
+        self.assertEqual(checkpoints.who(local.LocalSession()), "person")
+        self.assertEqual(checkpoints.who(types.SimpleNamespace()), "agent")  # Agent Link's session
+        for by in ("person", "agent", None):
+            e = checkpoints.cp_new("Doc", by=by)
+            os.makedirs(os.path.dirname(e["file"]), exist_ok=True)
+            with open(e["file"], "wb") as f:
+                f.write(b"x")
+            checkpoints.cp_add("Doc", e, cap=10 ** 9)
+        self.assertEqual([x.get("by") for x in checkpoints.cp_index("Doc")], ["person", "agent", None])
+        self.assertNotIn("by", checkpoints.cp_index("Doc")[2])
+        srcs = recovery.recovery_sources("Doc")
+        self.assertEqual(sorted(str(x.get("by")) for x in srcs), ["None", "agent", "person"])
+
     def test_undo_reach(self):
         e = {"tx": 5, "undo": 5}
         self.assertTrue(checkpoints.can_undo_back(e, 8, 8))

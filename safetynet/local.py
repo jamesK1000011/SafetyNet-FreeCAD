@@ -17,6 +17,7 @@ class LocalSession:
     agent steps or calls: those exist only under Agent Link."""
 
     in_place = True  # settings roll back into the running FreeCAD (no restart tool here)
+    by = "person"  # its checkpoints are the person's own (checkpoints.who)
     server = None
 
     def __init__(self):

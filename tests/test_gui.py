@@ -396,7 +396,9 @@ class RecoveredByDocument(unittest.TestCase):
         return [{"document": "WindowTest", "label": "WindowTest", "copies": copies("2026-11-15", (18, 17), "freecad")},
                 {"document": "WindowTest_recovered", "label": "WindowTest (recovered 18:48)", "copies": copies("2026-11-15", (16, 15))},
                 {"document": "WindowTest_recovered1", "label": "WindowTest_recovered (recovered 17:02) (recovered 18:48)",
-                 "copies": copies("2026-11-15", (14, 13), "checkpoint")},
+                 "copies": [{"time": "2026-11-15 14:00", "source": "checkpoint", "by": "person"},
+                            {"time": "2026-11-15 13:00", "source": "checkpoint", "by": "agent"},
+                            {"time": "2026-11-15 12:00", "source": "checkpoint"}]},
                 {"document": "OpTest_recovered_recovered1", "label": "OpTest_recovered1", "copies": copies("2026-11-15", (10,))},
                 {"document": "OpTest", "label": "OpTest", "copies": copies("2026-11-15", (9, 8))},
                 {"document": "Box", "label": "Box", "copies": copies("2026-11-14", (9,))},
@@ -408,11 +410,12 @@ class RecoveredByDocument(unittest.TestCase):
         g = panel.recovered_groups(self.docs(), open_names=["Box"], now=self.now)
         self.assertEqual([x["label"] for x in g], ["WindowTest", "OpTest", "Box"])
         win, op, box = g
-        self.assertEqual(win["count"], 6)
+        self.assertEqual(win["count"], 7)
         self.assertEqual(win["latest"][1], "FreeCAD autosave")
         self.assertEqual(win["latest"][2], {"document": "WindowTest", "label": "WindowTest"})  # Use Copy acts on the row
-        self.assertEqual([r[1] for r in win["rest"]], ["FreeCAD autosave", "SafetyNet autosave", "SafetyNet autosave", "checkpoint", "checkpoint"])
-        self.assertEqual(panel.group_text(win), "WindowTest — FreeCAD autosave (6 copies)")
+        self.assertEqual([r[1] for r in win["rest"]], ["FreeCAD autosave", "SafetyNet autosave", "SafetyNet autosave",
+                                                       "My checkpoint", "Agent checkpoint", "Checkpoint"])
+        self.assertEqual(panel.group_text(win), "WindowTest — FreeCAD autosave (7 copies)")
         self.assertEqual(op["count"], 3)
         self.assertFalse(win["older"])  # an hour old
         self.assertTrue(op["older"])  # closed, nine hours old
@@ -432,6 +435,16 @@ class RecoveredByDocument(unittest.TestCase):
         fold = rows[-1]
         self.assertEqual(len([c for c in fold.calls if c[0] == "addChild"]), 2)  # OpTest, Box
         self.assertIn(("setExpanded", (False,)), fold.calls)
+
+
+class CheckpointWords(unittest.TestCase):
+    def test_by_who_took_it(self):
+        from safetynet import panel
+
+        self.assertEqual(panel.source_words("checkpoint", "person"), "My checkpoint")
+        self.assertEqual(panel.source_words("checkpoint", "agent"), "Agent checkpoint")
+        self.assertEqual(panel.source_words("checkpoint"), "Checkpoint")  # written before it said
+        self.assertEqual(panel.source_words("freecad", "person"), "FreeCAD autosave")
 
 
 class Buttons(unittest.TestCase):

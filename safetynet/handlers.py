@@ -27,7 +27,7 @@ def history_checkpoint(s, a):
     if a.get("list"):
         return {"document": d.Label, "checkpoints": [
             {"checkpoint": e["id"], **({"name": e["name"]} if e.get("name") else {}), "time": stamp(e.get("t")), "bytes": e.get("bytes"),
-             **({"auto": True} if e.get("auto") else {})} for e in checkpoints.cp_index(d.Name)]}
+             **({"auto": True} if e.get("auto") else {}), **({"by": e["by"]} if e.get("by") else {})} for e in checkpoints.cp_index(d.Name)]}
     name = a.get("name")
     if name is not None and (not isinstance(name, str) or not name.strip() or len(name) > 60):
         raise Refused("invalid_input", "name: a short name for the checkpoint (60 characters at most).")
